@@ -15,12 +15,12 @@ remain in installed package metadata.
 
 | License | Locked packages |
 |---|---|
-| MIT | annotated-types 0.7.0; anyio 4.9.0; charset-normalizer 3.4.7; eval-type-backport 0.2.2; exceptiongroup 1.2.2; FastAPI 0.115.12; h11 0.16.0; Pydantic 2.11.5; pydantic-core 2.33.2; typing-inspection 0.4.1 |
-| BSD-3-Clause | Click 8.1.8; httpcore 1.0.9; HTTPX 0.28.1; idna 3.10; pypdf 6.14.2; ReportLab 4.4.9; Starlette 0.46.2; Uvicorn 0.34.3 |
-| MIT-CMU | Pillow 11.3.0 |
+| MIT | annotated-doc 0.0.4; annotated-types 0.7.0; anyio 4.9.0; charset-normalizer 3.4.7; eval-type-backport 0.2.2; exceptiongroup 1.2.2; FastAPI 0.121.3; h11 0.16.0; Pydantic 2.12.5; pydantic-core 2.41.5; typing-inspection 0.4.2 |
+| BSD-3-Clause | Click 8.1.8; httpcore 1.0.9; HTTPX 0.28.1; idna 3.10; pypdf 6.14.2; ReportLab 4.4.9; Starlette 0.49.3; Uvicorn 0.34.3 |
+| MIT-CMU | Pillow 11.3.0 on Python 3.9; Pillow 12.3.0 on Python 3.10+ |
 | MPL-2.0 | certifi 2025.1.31 |
 | MIT OR Apache-2.0 | sniffio 1.3.1 |
-| PSF-2.0 | typing-extensions 4.12.2 |
+| PSF-2.0 | typing-extensions 4.15.0 |
 
 ## Frontend and build toolchain
 

@@ -198,5 +198,6 @@ interpretation review—are listed in [`release_checklist.md`](release_checklist
   not edit the manifest by hand.
 - A 404 from an endpoint usually means the requested stable ID is not in the
   selected scope. Repeat with the ID returned by `/api/v1/search`.
-- An empty feature response can be biologically valid (for example SP1-203);
+- An empty feature response can be biologically valid (for example a transcript
+  with no available calls in the selected sources);
   distinguish it from an HTTP or build-validation error.

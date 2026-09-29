@@ -21,6 +21,23 @@ installer succeeded; the README now explains that prerequisite. Native macOS
 binary installations and a full clean operating-system installation were
 not tested by this audit.
 
+The initial GitHub Ubuntu R job subsequently failed before reaching the adapter
+tests: source installs of `png`, `curl`/`RCurl`, and `Rhtslib` could not find
+the PNG/libcurl development headers. Their missing dependencies then prevented
+SpliceImpactR from installing. CI and the Ubuntu/WSL2 setup instructions now
+explicitly install the compiler/CMake and development-library prerequisites.
+A corrected CI result, not the earlier local installation, is required to
+confirm that Linux installation path. Push checks are limited to `main` and
+pull requests are checked separately, avoiding duplicate push/PR installations
+for the same review-branch update.
+
+The Python lock was also checked against an isolated Python 3.14.7 environment:
+all dependencies installed as wheels. The updated FastAPI/Pydantic/Starlette
+combination passed all 26 backend/API/PDF tests on both Python 3.9.6 and 3.14.7
+with warnings treated as errors, and both environments passed `pip check`.
+Pillow remains version 11.3.0 on Python 3.9 and is 12.3.0 on Python 3.10+.
+Source CI now independently checks Python 3.9, 3.11, and 3.14.
+
 The documented `./scripts/setup_local.sh --no-start` command completed through
 frontend build, dependency installation, feature preparation, and full SQLite
 publication. Official raw inputs and archive queries were obtained during

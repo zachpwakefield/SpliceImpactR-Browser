@@ -64,7 +64,7 @@ The following commands create a complete local build. Run them from a fresh clon
 
 ### Requirements
 
-- Python 3.9+ for the API and builder (the isolated setup check uses Python 3.9; source CI uses Python 3.11).
+- Python 3.9–3.14 for the API and builder (isolated backend checks use 3.9 and 3.14; source CI covers 3.9, 3.11, and 3.14).
 - Node.js 22.13+ and pnpm 11.7+ for the production frontend.
 - R 4.6+ and the compatible Bioconductor release for [SpliceImpactR](https://bioconductor.org/packages/release/bioc/html/SpliceImpactR.html) (released package >=1.0.0). The same R installation reads RDS files during the build; R is not used while browsing.
 - Network access during preparation only. Runtime browsing is local/offline.
@@ -72,9 +72,24 @@ The following commands create a complete local build. Run them from a fresh clon
 Use macOS or Linux; on Windows, use WSL2 (the builder uses Unix file locks).
 Install Python from [python.org](https://www.python.org/downloads/), Node from
 [nodejs.org](https://nodejs.org/en/download), and R from
-[CRAN](https://cran.r-project.org/). Linux source installations of Bioconductor
-may need compiler and system-library development packages; resolve dependency
-errors before preparing data. A Conda environment is optional, not required.
+[CRAN](https://cran.r-project.org/). A Conda environment is optional, not required.
+
+On Ubuntu/Debian or WSL2 Ubuntu, install the source-build prerequisites before
+running setup (an administrator may need to do this once):
+
+```bash
+sudo apt-get update
+sudo apt-get install --no-install-recommends -y \
+  build-essential gfortran cmake pkg-config \
+  libcurl4-openssl-dev libssl-dev libxml2-dev libpng-dev \
+  zlib1g-dev libbz2-dev liblzma-dev
+```
+
+These are compiler tools and development libraries for R's dependencies, not
+annotation filters or a `samtools` requirement. In particular, missing
+`curl/curl.h` or `png.h` prevents SpliceImpactR's dependency chain from installing.
+Other Linux distributions need their corresponding development packages;
+the Ubuntu command must not be used on macOS.
 
 If R is installed from Conda/source rather than the native macOS installer,
 ensure its compiler toolchain and CMake are available for source dependencies
@@ -102,7 +117,8 @@ and new database.
 If no existing R package library is writable, the installer creates R's
 configured personal library. Set `R_LIBS_USER` before setup to choose an
 isolated library; subsequent preparation/build commands must use the same
-setting. Administrator privileges are not needed for package installation.
+setting. R package installation uses that writable library; installing Linux
+system prerequisites separately may require administrator privileges.
 
 For separate, inspectable steps:
 

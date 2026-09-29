@@ -2,22 +2,28 @@ name: source checks
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
   static-and-python:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.11", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
       - name: Install Python dependencies
         run: python -m pip install --requirement requirements.lock
+      - name: Check Python dependency consistency
+        run: python -m pip check
       - name: Publication privacy audit
         run: ./scripts/verify_publication.sh
       - name: Python unit tests
-        run: python -m unittest discover -s backend/tests -p 'test_*.py' -v
+        run: python -W error -m unittest discover -s backend/tests -p 'test_*.py' -v
       - name: Builder and projection tests
         run: python -m unittest discover -s tests/data -p 'test_*.py' -v
 
@@ -47,9 +53,19 @@ jobs:
         run: pnpm run build
 
   r-annotation-adapter:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      # Bioconductor dependencies may build from source even when CRAN
+      # binaries are enabled. R alone does not provide these development files.
+      - name: Install Linux R build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential gfortran cmake pkg-config \
+            libcurl4-openssl-dev libssl-dev libxml2-dev libpng-dev \
+            zlib1g-dev libbz2-dev liblzma-dev
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: "4.6"

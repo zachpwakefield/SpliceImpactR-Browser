@@ -134,11 +134,16 @@ When supplied, the SHA-256 must match `REFERENCE_FASTA_SHA256` and the index dig
 ```bash
 PYTHON=.venv/bin/python ./scripts/build_annotations.sh data/cache --scope full
 
-# Optional reference-enabled build:
-./scripts/build_annotations.sh data/cache \
+# Or, if a reference has been prepared, use this alternative build command:
+PYTHON=.venv/bin/python ./scripts/build_annotations.sh data/cache \
   --reference-fasta data/reference/Homo_sapiens.GRCh38.dna.toplevel.fa \
   --scope full
-./scripts/verify_release.sh
 ```
+
+The builder's validation gates run during either build command. The separate
+`./scripts/verify_release.sh` is a release-candidate check, not the next step
+after a single first build: it requires a two-build determinism receipt. Follow
+the complete [testing instructions](testing.md#5-full-build-and-release-checks)
+to create that receipt and run the release gate.
 
 Once the build is published, copy or archive the resulting `data/builds/<build-id>` locally. Keep it out of GitHub unless a separate data-release policy and licensing review authorizes distribution.
