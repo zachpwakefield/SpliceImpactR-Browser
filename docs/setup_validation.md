@@ -26,8 +26,13 @@ tests: source installs of `png`, `curl`/`RCurl`, and `Rhtslib` could not find
 the PNG/libcurl development headers. Their missing dependencies then prevented
 SpliceImpactR from installing. CI and the Ubuntu/WSL2 setup instructions now
 explicitly install the compiler/CMake and development-library prerequisites.
-A corrected CI result, not the earlier local installation, is required to
-confirm that Linux installation path. Push checks are limited to `main` and
+A corrected CI result, not the earlier local installation, was required to
+confirm that Linux installation path. Both corrected review-branch runs
+[7](https://github.com/zachpwakefield/transcript-browser-shareable/actions/runs/36641014609)
+and [8](https://github.com/zachpwakefield/transcript-browser-shareable/actions/runs/36642405540)
+passed: fresh Linux installation of SpliceImpactR 1.0.0, complete-annotation
+integration, frontend, and Python 3.9/3.11/3.14 checks. The Linux R fixture
+does not replace a full Linux scientific download/build. Push checks are limited to `main` and
 pull requests are checked separately, avoiding duplicate push/PR installations
 for the same review-branch update.
 
@@ -117,17 +122,67 @@ The final updated local core release gate then passed 43 data/builder,
 TypeScript, production build, offline-bundle, full-startup, and conflict-copy
 checks. The data/builder suite used Python 3.14; the project backend suite used
 Python 3.9, with the separate 26-test Python 3.14 backend and live runtime replay
-also passing. This does not replace the independently required Linux R CI job.
+also passing. The independent corrected Linux R CI job subsequently passed.
 
 Final first-install review also added an explicit writable-library preflight.
 Its offline test creates a missing personal R library, promotes an existing
 writable library, and rejects an unset personal-library fallback. This avoids
 a non-interactive install depending on administrator-owned system libraries.
 
+A subsequent isolated Firefox 153 workflow at 1440 × 1000 / DPR 2 passed the
+same PGK1/SP1/ANK2 selection, expansion, zoom/pan, comparison, sequence, session,
+and local PDF checks with no console errors/warnings, failed HTTP responses,
+or external resources. The Playwright WebKit 26.5 test engine crashed before
+creating a page on this machine; it supplies no WebKit/Safari acceptance
+evidence and was not classified as an application failure.
+
+## Optional Mac launcher replay
+
+The public source review found two missing packaging helpers, a fixed old
+annotation hash, and a required project-folder name that did not match a normal
+GitHub clone. The restored local packager records each installed build,
+frontend identity, and Python interpreter. The materializer validates private
+data clones without changing source metadata; the native launcher discovers
+the installed runtime rather than a Desktop project name.
+
+On Apple Silicon macOS 26.0.1 with Swift 5.8.1, the public build/install scripts
+compiled and ad-hoc-signed the application, installed it in an isolated temporary
+home, and prepared the full immutable database using an APFS clone. Reinstall
+verified/reused the existing runtime. A no-window/no-browser native self-test
+started the packaged Python 3.9 service, confirmed full-build and frontend
+identity, selected another loopback port because the default port belonged to
+a different build, and stopped its own server cleanly. The pre-existing local
+services remained available afterward. The real installed application, Dock,
+Desktop, and Application Support were not modified.
+
+A separate server using that installed private backend/site-packages/frontend
+and full data clone also passed the complete Firefox 153 / DPR 2 workflow,
+including protein sequences, comparison, local session download, and PDF
+generation. No console warnings/errors, failed HTTP responses, or external
+resources were observed. This checks installed runtime functionality separately
+from native readiness.
+
+Nine cross-platform packaging tests passed on Python 3.9 and 3.14 with warnings
+treated as errors (35 backend tests total). They check bundle contents,
+runtime/scientific identity separation, unchanged originals, independent
+clones, code/data tampering, non-overwrite, safe relative paths, and reference
+relocation with exact final-path identity receipts and a tiny range response.
+The publication audit now also rejects forcibly staged app bundles or generated
+runtime ZIPs/manifests, including outside the default ignored output directory.
+This is not a full-genome optional-reference installation or a visual Dock/Finder
+interaction test. Native source compilation/signing is also required in CI.
+
+After the launcher and publication changes, the final core release gate passed
+44 data/builder, 35 backend/packaging/API/PDF, and 116 frontend tests (195 total,
+no skips), plus deterministic-rebuild, TypeScript, production build, offline
+audit, full-database startup, and conflict-copy checks. Both Python 3.9 and
+3.14 independently passed the 35 backend tests with warnings treated as errors.
+The scientific annotation build identity remained unchanged.
+
 ## Remaining review boundaries
 
-- Cross-engine Firefox/WebKit/Safari and an actual native desktop installation
-  replay were not part of this new setup audit.
+- Actual desktop Safari, a working WebKit engine, Intel native installation,
+  and physical Dock/Finder interaction remain unverified by this setup audit.
 - Biological interpretation sign-off and unfamiliar-scientist usability tasks
   still need human reviewers.
 - The optional reference-enabled build and the full optional exon audit were

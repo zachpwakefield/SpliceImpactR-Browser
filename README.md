@@ -153,7 +153,10 @@ PYTHON=.venv/bin/python ./scripts/build_annotations.sh data/cache --scope full
 ./run_local.sh
 ```
 
-Open the printed `http://127.0.0.1:<port>` URL. The server binds to loopback only. The optional macOS launcher is documented in [`desktop_app/README.md`](desktop_app/README.md).
+Open the printed `http://127.0.0.1:<port>` URL. The server binds to loopback only.
+For a clickable Mac/Dock app after the full setup, follow
+[`desktop_app/README.md`](desktop_app/README.md). Each user builds it locally;
+generated app bundles/private runtime manifests are not shareable releases.
 
 Dependency installation and data preparation require network access. Feature
 outputs are reused only when their input signature and file digest match;
@@ -375,7 +378,15 @@ pnpm run build
 cd ..
 ```
 
-The included [GitHub Actions workflow](.github/workflows/ci.yml) repeats the publication audit, backend tests, frontend tests, TypeScript checks, production build, and a released-package R adapter integration test on pushes and pull requests. Use `./scripts/test_source.sh --require-all` after installing dependencies to make missing test environments fail rather than skip. The full release gate additionally requires a prepared full database, deterministic rebuild receipt, offline audit, cross-browser interaction review, fresh-environment replay, and domain-scientist interpretation review.
+The included [GitHub Actions workflow](.github/workflows/ci.yml) repeats the
+publication audit, backend/packaging tests on Python 3.9/3.11/3.14, frontend
+tests, TypeScript checks, production build, released-package R adapter
+integration, and native Mac launcher compilation/signing. It runs on `main`
+pushes and pull requests. Use `./scripts/test_source.sh --require-all` after
+installing dependencies to make missing test environments fail rather than
+skip. The full release gate additionally requires a prepared full database,
+deterministic rebuild receipt, offline audit, cross-browser interaction review,
+fresh-environment replay, and domain-scientist interpretation review.
 
 For the staged SP1 build, live API smoke test, manual genome-browser checklist,
 and full release gate, see [`docs/testing.md`](docs/testing.md). The latest

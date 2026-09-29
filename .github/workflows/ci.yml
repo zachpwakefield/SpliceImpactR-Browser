@@ -27,6 +27,26 @@ jobs:
       - name: Builder and projection tests
         run: python -m unittest discover -s tests/data -p 'test_*.py' -v
 
+  macos-launcher-source:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check launcher scripts and property list
+        run: |
+          bash -n desktop_app/build_macos_app.sh desktop_app/install_macos_app.sh
+          plutil -lint desktop_app/Info.plist
+      - name: Compile and ad-hoc sign the native launcher
+        run: |
+          xcrun swiftc -O -target "$(uname -m)-apple-macosx12.0" \
+            -module-cache-path "$RUNNER_TEMP/swift-module-cache" \
+            -framework AppKit desktop_app/TranscriptBrowserLauncher.swift \
+            -o "$RUNNER_TEMP/TranscriptBrowserLauncher"
+          codesign --force --sign - "$RUNNER_TEMP/TranscriptBrowserLauncher"
+          codesign --verify --strict "$RUNNER_TEMP/TranscriptBrowserLauncher"
+    # This checks native source/toolchain compatibility, not a full scientific
+    # installation. The latter remains a separate local generated-data gate.
+
   frontend:
     runs-on: ubuntu-latest
     steps:

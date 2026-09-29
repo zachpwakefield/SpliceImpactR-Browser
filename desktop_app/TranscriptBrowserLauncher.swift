@@ -1,29 +1,39 @@
 import AppKit
+import CryptoKit
+import Darwin
 import Foundation
 
 private enum LauncherRuntimeError: LocalizedError {
     case missingEmbeddedRuntime
     case invalidRuntimeManifest(URL)
-    case runtimeExtractionFailed(Int32)
     case missingVerifiedDatabase
+    case runtimeIntegrity(String)
+    case missingPython
 
     var errorDescription: String? {
         switch self {
         case .missingEmbeddedRuntime:
-            return "The application does not contain its private Python runtime."
+            return "The application does not contain its local runtime package. Rebuild and install it from your checkout."
         case .invalidRuntimeManifest(let url):
             return "The runtime manifest is missing or invalid at \(url.path)."
-        case .runtimeExtractionFailed(let status):
-            return "The private Python runtime could not be unpacked (exit code \(status))."
         case .missingVerifiedDatabase:
             return "The private verified data clone is missing. Re-run desktop_app/install_macos_app.sh once."
+        case .runtimeIntegrity(let path):
+            return "A private runtime file is missing or changed (\(path)). Reinstall the launcher after stopping it."
+        case .missingPython:
+            return "The Python installation used to build this app is unavailable. Restore Python and re-run desktop_app/install_macos_app.sh."
         }
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let port = 8765
-    private let expectedBuildHash = "f0f2071044f7d662c02212348f0ad6d93aef37e6460e29bf64e034ca77437dac"
+    private var port = 8765
+    private var expectedBuildHash = ""
+    private var expectedFrontendHash = ""
+    private var pythonURL: URL?
+    private var expectedPythonVersion = ""
+    private let selfTest = CommandLine.arguments.contains("--self-test")
+    var exitCode: Int32 = 0
     private var window: NSWindow!
     private var statusLabel: NSTextField!
     private var detailLabel: NSTextField!
@@ -33,13 +43,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var progress: NSProgressIndicator!
     private var serverProcess: Process?
     private var serverLogHandle: FileHandle?
-    private var projectURL: URL?
     private var runtimeURL: URL?
     private var ownsServer = false
     private var serverIsReady = false
     private var didOpenBrowser = false
     private var isTerminating = false
     private var launchGeneration = 0
+    private var readinessStarted = Date()
 
     private var serverURL: URL {
         URL(string: "http://127.0.0.1:\(port)")!
@@ -50,15 +60,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var logURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        if let root = testStateRoot {
+            return root.appendingPathComponent("Logs/server.log")
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/Transcript Browser/server.log")
     }
 
+    // Explicit isolation for the documented native self-test; normal launches
+    // always use this user's Application Support and Logs directories.
+    private var testStateRoot: URL? {
+        guard selfTest, let index = CommandLine.arguments.firstIndex(of: "--state-root"),
+              index + 1 < CommandLine.arguments.count else { return nil }
+        return URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true)
+            .standardizedFileURL.resolvingSymlinksInPath()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(selfTest ? .prohibited : .regular)
         configureMenu()
         configureWindow()
-        NSApp.activate(ignoringOtherApps: true)
+        if !selfTest { NSApp.activate(ignoringOtherApps: true) }
         beginLaunch()
     }
 
@@ -82,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launchGeneration += 1
         if ownsServer, let process = serverProcess, process.isRunning {
             process.terminate()
+            if selfTest { process.waitUntilExit() }
         }
         try? serverLogHandle?.close()
     }
@@ -218,83 +241,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -27),
         ])
 
-        window.makeKeyAndOrderFront(nil)
+        if !selfTest { window.makeKeyAndOrderFront(nil) }
     }
 
-    private func discoverProject() -> URL? {
-        var candidates: [URL] = []
-        if let configured = ProcessInfo.processInfo.environment["TRANSCRIPT_BROWSER_PROJECT"],
-           !configured.isEmpty {
-            candidates.append(URL(fileURLWithPath: configured, isDirectory: true))
+    private func safeRuntimeFile(_ root: URL, relative: String) throws -> URL {
+        if try root.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true {
+            throw LauncherRuntimeError.runtimeIntegrity("runtime directory")
         }
-        candidates.append(
-            Bundle.main.bundleURL
-                .deletingLastPathComponent()
-                .appendingPathComponent("transcript_browser", isDirectory: true)
-        )
-        candidates.append(
-            FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Desktop/transcript_browser", isDirectory: true)
-        )
-
-        return candidates.first { candidate in
-            FileManager.default.isExecutableFile(
-                atPath: candidate.appendingPathComponent("run_local.sh").path
-            ) && FileManager.default.isExecutableFile(
-                atPath: candidate.appendingPathComponent(".venv/bin/python").path
-            ) && FileManager.default.fileExists(
-                atPath: candidate.appendingPathComponent("frontend/dist/index.html").path
-            )
+        let parts = relative.split(separator: "/", omittingEmptySubsequences: false)
+        guard !parts.isEmpty, !relative.hasPrefix("/"),
+              !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else {
+            throw LauncherRuntimeError.runtimeIntegrity(relative)
         }
+        var path = root
+        for part in parts {
+            path.appendPathComponent(String(part))
+            let values = try path.resourceValues(forKeys: [.isSymbolicLinkKey])
+            if values.isSymbolicLink == true { throw LauncherRuntimeError.runtimeIntegrity(relative) }
+        }
+        return path
     }
 
-    private func runtimeVersion(manifestURL: URL) throws -> String {
-        let data = try Data(contentsOf: manifestURL)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let version = object["runtimeVersion"] as? String,
-              !version.isEmpty else {
-            throw LauncherRuntimeError.invalidRuntimeManifest(manifestURL)
+    private func sha256(_ path: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: path)
+        defer { try? handle.close() }
+        var digest = SHA256()
+        while let data = try handle.read(upToCount: 1024 * 1024), !data.isEmpty {
+            digest.update(data: data)
         }
-        return version
+        return digest.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    private func runtimeVersion(at runtimeURL: URL) throws -> String {
-        try runtimeVersion(
-            manifestURL: runtimeURL.appendingPathComponent("runtime-manifest.json")
-        )
-    }
-
-    private func ensureDataClones(runtimeURL: URL) throws {
-        let manifestURL = runtimeURL.appendingPathComponent("runtime-manifest.json")
-        let data = try Data(contentsOf: manifestURL)
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let externalFiles = object["externalFiles"] as? [String: Any] else {
-            throw LauncherRuntimeError.invalidRuntimeManifest(manifestURL)
-        }
-        for (relativePath, rawMetadata) in externalFiles {
-            guard let metadata = rawMetadata as? [String: Any],
-                  let expectedSize = metadata["size"] as? NSNumber else {
-                throw LauncherRuntimeError.invalidRuntimeManifest(manifestURL)
-            }
-            let destination = runtimeURL.appendingPathComponent(relativePath)
-            let resolvedDestination = destination.resolvingSymlinksInPath()
-            if relativePath.hasSuffix("/genome.fa")
-                || relativePath.hasSuffix("/genome.fa.fai") {
-                let values = try destination.resourceValues(forKeys: [.isSymbolicLinkKey])
-                guard values.isSymbolicLink == true else {
-                    throw LauncherRuntimeError.missingVerifiedDatabase
-                }
-            }
-            guard FileManager.default.fileExists(atPath: resolvedDestination.path),
-                  let actualSize = try? resolvedDestination
-                    .resourceValues(forKeys: [.fileSizeKey]).fileSize,
-                  actualSize == expectedSize.intValue else {
-                throw LauncherRuntimeError.missingVerifiedDatabase
-            }
-        }
-    }
-
-    private func prepareRuntime() throws -> URL {
+    private func prepareRuntime() throws -> (URL, [String: Any]) {
         guard let resources = Bundle.main.resourceURL else {
             throw LauncherRuntimeError.missingEmbeddedRuntime
         }
@@ -303,72 +281,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard FileManager.default.fileExists(atPath: archive.path) else {
             throw LauncherRuntimeError.missingEmbeddedRuntime
         }
-        let version = try runtimeVersion(manifestURL: embeddedManifest)
+        let embeddedData = try Data(contentsOf: embeddedManifest)
+        guard let metadata = try JSONSerialization.jsonObject(with: embeddedData) as? [String: Any],
+              metadata["schema"] as? String == "transcript-browser-macos-runtime/v1",
+              let version = metadata["runtimeVersion"] as? String,
+              version.count == 64, version.allSatisfy({ "0123456789abcdef".contains($0) }),
+              let buildHash = metadata["buildHash"] as? String, !buildHash.isEmpty,
+              let frontendHash = metadata["frontendIndexSha256"] as? String,
+              frontendHash.count == 64,
+              let interpreter = metadata["pythonExecutable"] as? String, interpreter.hasPrefix("/"),
+              let pythonVersion = metadata["pythonVersion"] as? String, !pythonVersion.isEmpty,
+              let bundledFiles = metadata["bundledFiles"] as? [String: Any],
+              let externalFiles = metadata["externalFiles"] as? [String: Any] else {
+            throw LauncherRuntimeError.invalidRuntimeManifest(embeddedManifest)
+        }
+        guard FileManager.default.isExecutableFile(atPath: interpreter) else {
+            throw LauncherRuntimeError.missingPython
+        }
         let fileManager = FileManager.default
-        let applicationSupport = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let runtimeRoot = applicationSupport
-            .appendingPathComponent("Transcript Browser", isDirectory: true)
-            .appendingPathComponent("Runtime", isDirectory: true)
-        try fileManager.createDirectory(at: runtimeRoot, withIntermediateDirectories: true)
-
-        let cached = runtimeRoot.appendingPathComponent(version, isDirectory: true)
-        let cachedIsComplete = (try? runtimeVersion(at: cached)) == version
-            && fileManager.fileExists(
-                atPath: cached.appendingPathComponent("backend/app/cli.py").path
-            )
-            && fileManager.fileExists(
-                atPath: cached.appendingPathComponent("site-packages/uvicorn/__init__.py").path
-            )
-            && fileManager.fileExists(
-                atPath: cached.appendingPathComponent("frontend/dist/index.html").path
-            )
-            && fileManager.fileExists(
-                atPath: cached.appendingPathComponent("data/builds/gencode_v45/manifest.json").path
-            )
-        if cachedIsComplete {
-            try ensureDataClones(runtimeURL: cached)
-            return cached
+        let stateRoot: URL
+        if let root = testStateRoot {
+            stateRoot = root
+        } else {
+            stateRoot = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                .appendingPathComponent("Transcript Browser", isDirectory: true)
         }
-
-        let staging = runtimeRoot.appendingPathComponent(
-            ".install-\(UUID().uuidString)",
-            isDirectory: true
-        )
-        defer { try? fileManager.removeItem(at: staging) }
-        try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
-        let extractor = Process()
-        extractor.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        extractor.arguments = ["-x", "-k", archive.path, staging.path]
-        extractor.currentDirectoryURL = URL(
-            fileURLWithPath: NSTemporaryDirectory(),
-            isDirectory: true
-        )
-        extractor.standardOutput = FileHandle.nullDevice
-        extractor.standardError = FileHandle.nullDevice
-        try extractor.run()
-        extractor.waitUntilExit()
-        guard extractor.terminationStatus == 0 else {
-            throw LauncherRuntimeError.runtimeExtractionFailed(extractor.terminationStatus)
+        let cached = stateRoot.appendingPathComponent("Runtime", isDirectory: true)
+            .appendingPathComponent(version, isDirectory: true)
+        guard fileManager.fileExists(atPath: cached.path),
+              try Data(contentsOf: safeRuntimeFile(cached, relative: "runtime-manifest.json")) == embeddedData else {
+            throw LauncherRuntimeError.missingVerifiedDatabase
         }
-        guard try runtimeVersion(at: staging) == version else {
-            throw LauncherRuntimeError.invalidRuntimeManifest(
-                staging.appendingPathComponent("runtime-manifest.json")
-            )
+        for (relative, rawRecord) in bundledFiles {
+            guard let record = rawRecord as? [String: Any],
+                  let expectedSize = record["size"] as? NSNumber,
+                  let expectedHash = record["sha256"] as? String else {
+                throw LauncherRuntimeError.invalidRuntimeManifest(embeddedManifest)
+            }
+            let file = try safeRuntimeFile(cached, relative: relative)
+            guard try file.resourceValues(forKeys: [.fileSizeKey]).fileSize == expectedSize.intValue,
+                  try sha256(file) == expectedHash else {
+                throw LauncherRuntimeError.runtimeIntegrity(relative)
+            }
         }
-        if fileManager.fileExists(atPath: cached.path) {
-            try fileManager.removeItem(at: cached)
+        for (relative, rawRecord) in externalFiles {
+            guard let record = rawRecord as? [String: Any], let size = record["size"] as? NSNumber else {
+                throw LauncherRuntimeError.invalidRuntimeManifest(embeddedManifest)
+            }
+            let file = try safeRuntimeFile(cached, relative: relative)
+            guard try file.resourceValues(forKeys: [.fileSizeKey]).fileSize == size.intValue else {
+                throw LauncherRuntimeError.missingVerifiedDatabase
+            }
         }
-        try fileManager.moveItem(at: staging, to: cached)
-        try ensureDataClones(runtimeURL: cached)
-        return cached
+        return (cached, metadata)
     }
 
-    private func beginLaunch() {
+    private func beginLaunch(allowReuse: Bool = true) {
         launchGeneration += 1
         let generation = launchGeneration
         serverIsReady = false
@@ -378,31 +346,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         progress.isHidden = false
         progress.startAnimation(nil)
         statusLabel.stringValue = "Preparing the verified local service…"
-        detailLabel.stringValue = "The first launch prepares a private 40 MB runtime. No Terminal window will open."
-        projectURL = nil
+        detailLabel.stringValue = "Checking the private runtime prepared by the installer. No Terminal window will open."
         runtimeURL = nil
+        pythonURL = nil
+        port = 8765
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
-            let project = self.discoverProject()
-            var preparedRuntime: URL?
+            var preparedRuntime: (URL, [String: Any])?
             var runtimeError: Error?
-            if project != nil {
-                do {
-                    preparedRuntime = try self.prepareRuntime()
-                } catch {
-                    runtimeError = error
-                }
+            do {
+                preparedRuntime = try self.prepareRuntime()
+            } catch {
+                runtimeError = error
             }
             DispatchQueue.main.async {
                 guard generation == self.launchGeneration, !self.isTerminating else { return }
-                guard let project = project else {
-                    self.showFailure(
-                        "The transcript_browser project could not be found.",
-                        detail: "Keep Transcript Browser.app beside the transcript_browser folder on the Desktop."
-                    )
-                    return
-                }
                 guard let preparedRuntime = preparedRuntime else {
                     self.showFailure(
                         "The private local runtime could not be prepared.",
@@ -410,13 +369,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     )
                     return
                 }
-                self.projectURL = project
-                self.runtimeURL = preparedRuntime
+                self.runtimeURL = preparedRuntime.0
+                self.expectedBuildHash = preparedRuntime.1["buildHash"] as! String
+                self.expectedFrontendHash = preparedRuntime.1["frontendIndexSha256"] as! String
+                self.pythonURL = URL(fileURLWithPath: preparedRuntime.1["pythonExecutable"] as! String)
+                self.expectedPythonVersion = preparedRuntime.1["pythonVersion"] as! String
                 self.statusLabel.stringValue = "Checking the verified local service…"
                 self.detailLabel.stringValue = "The service is available only on this Mac at 127.0.0.1."
                 self.checkManifest { [weak self] ready, buildHash in
                     guard let self = self, generation == self.launchGeneration else { return }
-                    if ready {
+                    if ready && allowReuse {
                         self.ownsServer = false
                         self.showReady(buildHash: buildHash, reused: true)
                     } else {
@@ -428,11 +390,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startServer(generation: Int) {
-        guard let projectURL = projectURL, let runtimeURL = runtimeURL else { return }
+        guard let pythonURL = pythonURL, let runtimeURL = runtimeURL else { return }
         statusLabel.stringValue = "Starting the verified local server…"
         detailLabel.stringValue = "This usually takes a few seconds while the immutable local package is validated."
 
         do {
+            port = try availableLoopbackPort(preferred: port)
             let logDirectory = logURL.deletingLastPathComponent()
             try FileManager.default.createDirectory(
                 at: logDirectory,
@@ -452,9 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             serverLogHandle = handle
 
             let process = Process()
-            process.executableURL = projectURL
-                .appendingPathComponent(".venv/bin/python")
-                .resolvingSymlinksInPath()
+            process.executableURL = pythonURL
             // Finder-launched applications inherit a working directory inside the
             // Desktop/FileProvider tree. Python can block while resolving that
             // directory before our module is imported, so give the child a small,
@@ -470,9 +431,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let sitePackagesURL = runtimeURL
                 .appendingPathComponent("site-packages", isDirectory: true)
             let bootstrap = """
-            import os,runpy,sys; runtime,site_packages,project,port=sys.argv[1:5]; print(f"Python runtime ready: prefix={sys.prefix} cwd={os.getcwd()}",flush=True); sys.path[0:0]=[runtime,site_packages]; sys.argv=["backend.app.cli","--project-root",project,"--port",port]; runpy.run_module("backend.app.cli",run_name="__main__")
+            import os,runpy,sys; runtime,site_packages,project,port,version=sys.argv[1:6]; assert sys.version_info[:2]==tuple(map(int,version.split('.')[:2])), "Python version changed; reinstall the Mac launcher"; print(f"Python runtime ready: prefix={sys.prefix} cwd={os.getcwd()}",flush=True); sys.path[0:0]=[runtime,site_packages]; sys.argv=["backend.app.cli","--project-root",project,"--port",port]; runpy.run_module("backend.app.cli",run_name="__main__")
             """
             process.arguments = [
+                "-I",
+                "-S",
                 "-B",
                 "-c",
                 bootstrap,
@@ -480,6 +443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sitePackagesURL.path,
                 runtimeURL.path,
                 String(port),
+                expectedPythonVersion,
             ]
             process.standardOutput = handle
             process.standardError = handle
@@ -503,10 +467,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async {
                     guard let self = self,
                           !self.isTerminating,
-                          generation == self.launchGeneration,
-                          !self.serverIsReady else { return }
+                          generation == self.launchGeneration else { return }
                     self.showFailure(
-                        "The local server stopped before it became ready.",
+                        "The local server stopped.",
                         detail: "Exit code \(terminated.terminationStatus). Details are in \(self.logURL.path)."
                     )
                 }
@@ -514,6 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try process.run()
             serverProcess = process
             ownsServer = true
+            readinessStarted = Date()
             pollUntilReady(generation: generation, attempt: 0)
         } catch {
             if let message = "Launcher failed to start child: \(error)\n".data(using: .utf8) {
@@ -526,6 +490,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func availableLoopbackPort(preferred: Int) throws -> Int {
+        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        defer { Darwin.close(descriptor) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        func bindPort(_ value: Int) -> Int32 {
+            address.sin_port = UInt16(value).bigEndian
+            return withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                }
+            }
+        }
+        if bindPort(preferred) != 0 && bindPort(0) != 0 {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        var size = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let result = withUnsafeMutablePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getsockname(descriptor, $0, &size)
+            }
+        }
+        guard result == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+        return Int(UInt16(bigEndian: address.sin_port))
+    }
+
     private func pollUntilReady(generation: Int, attempt: Int) {
         guard generation == launchGeneration, !isTerminating else { return }
         checkManifest { [weak self] ready, buildHash in
@@ -534,7 +527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.showReady(buildHash: buildHash, reused: false)
                 return
             }
-            if attempt >= 180 {
+            if Date().timeIntervalSince(self.readinessStarted) >= 90 {
                 self.showFailure(
                     "The local server did not become ready within 90 seconds.",
                     detail: "Quit and try again. Details are in \(self.logURL.path)."
@@ -548,25 +541,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkManifest(completion: @escaping (Bool, String?) -> Void) {
+        let origin = serverURL
+        let expectedBuild = expectedBuildHash
+        let expectedFrontend = expectedFrontendHash
         var request = URLRequest(url: manifestURL)
         request.timeoutInterval = 1.5
         request.cachePolicy = .reloadIgnoringLocalCacheData
         URLSession.shared.dataTask(with: request) { data, response, _ in
             let http = response as? HTTPURLResponse
-            var valid = false
-            var buildHash: String?
             if http?.statusCode == 200,
                let data = data,
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let hash = object["buildHash"] as? String,
-               hash == self.expectedBuildHash,
+               hash == expectedBuild,
+               object["scope"] as? String == "full",
+               object["technicalPreview"] as? Bool == false,
                let capabilities = object["capabilities"] as? [String: Any],
                capabilities["pdfReports"] as? Bool == true {
-                valid = true
-                buildHash = hash
-            }
-            DispatchQueue.main.async {
-                completion(valid, buildHash)
+                var frontendRequest = URLRequest(url: origin)
+                frontendRequest.timeoutInterval = 1.5
+                frontendRequest.cachePolicy = .reloadIgnoringLocalCacheData
+                URLSession.shared.dataTask(with: frontendRequest) { html, response, _ in
+                    let digest = html.map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
+                    let ready = (response as? HTTPURLResponse)?.statusCode == 200 && digest == expectedFrontend
+                    DispatchQueue.main.async { completion(ready, ready ? hash : nil) }
+                }.resume()
+            } else {
+                DispatchQueue.main.async { completion(false, nil) }
             }
         }.resume()
     }
@@ -586,7 +587,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ? "Closing this launcher stops the server it started."
             : "This launcher is using an already-running local server and will not stop it."
         detailLabel.stringValue = "Build \(shortHash) · \(serverURL.absoluteString)\n\(lifecycle)"
-        if !didOpenBrowser {
+        if selfTest {
+            let receipt: [String: Any] = ["passed": true, "buildHash": buildHash ?? "", "url": serverURL.absoluteString, "reused": reused, "ownedProcess": ownsServer]
+            if let data = try? JSONSerialization.data(withJSONObject: receipt, options: [.sortedKeys]), let output = String(data: data, encoding: .utf8) {
+                print(output)
+            }
+            NSApp.terminate(nil)
+        } else if !didOpenBrowser {
             didOpenBrowser = true
             NSWorkspace.shared.open(serverURL)
         }
@@ -600,6 +607,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         retryButton.isHidden = false
         statusLabel.stringValue = message
         detailLabel.stringValue = detail
+        if selfTest {
+            exitCode = 1
+            FileHandle.standardError.write(Data("Native launcher self-test failed: \(message) \(detail)\n".utf8))
+            NSApp.terminate(nil)
+        }
     }
 
     @objc private func openBrowser(_ sender: Any?) {
@@ -609,7 +621,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func retryLaunch(_ sender: Any?) {
         launchGeneration += 1
-        if ownsServer, let process = serverProcess, process.isRunning {
+        let stoppedGeneration = launchGeneration
+        let stopping = ownsServer ? serverProcess : nil
+        if let process = stopping, process.isRunning {
             process.terminationHandler = nil
             process.terminate()
         }
@@ -617,7 +631,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         serverProcess = nil
         try? serverLogHandle?.close()
         serverLogHandle = nil
-        beginLaunch()
+        if let process = stopping, process.isRunning {
+            statusLabel.stringValue = "Stopping the prior local server…"
+            DispatchQueue.global(qos: .userInitiated).async {
+                process.waitUntilExit()
+                DispatchQueue.main.async {
+                    guard stoppedGeneration == self.launchGeneration, !self.isTerminating else { return }
+                    self.beginLaunch(allowReuse: false)
+                }
+            }
+        } else {
+            beginLaunch(allowReuse: stopping == nil)
+        }
     }
 }
 
@@ -625,3 +650,4 @@ let application = NSApplication.shared
 let delegate = AppDelegate()
 application.delegate = delegate
 application.run()
+Darwin.exit(delegate.exitCode)

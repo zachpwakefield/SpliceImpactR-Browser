@@ -58,6 +58,9 @@ def main() -> int:
         # This checker necessarily contains the patterns it searches for.
         if relative == "scripts/verify_publication.py":
             continue
+        if any(part.endswith(".app") for part in path.relative_to(ROOT).parts) or path.name in {"Runtime.zip", "Runtime-manifest.json", "runtime-manifest.json"}:
+            failures.append(f"private/generated desktop runtime: {relative}")
+            continue
         if relative.startswith(("data/", "output/", "tmp/", "desktop_app/dist/")):
             if relative.startswith("data/builds/") and relative.endswith("README.md"):
                 pass

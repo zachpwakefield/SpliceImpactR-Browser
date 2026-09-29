@@ -44,7 +44,8 @@ echo "[2/5] Python syntax"
 PY_CACHE="$(mktemp -d "${TMPDIR:-/tmp}/transcript-browser-pycache.XXXXXX")"
 cleanup() { rm -rf "$PY_CACHE"; }
 trap cleanup EXIT
-PYTHONPYCACHEPREFIX="$PY_CACHE" "$PYTHON_BIN" -B -m compileall -q backend scripts tests
+PYTHONPYCACHEPREFIX="$PY_CACHE" "$PYTHON_BIN" -B -m compileall -q backend scripts tests desktop_app
+bash -n desktop_app/build_macos_app.sh desktop_app/install_macos_app.sh
 
 echo "[3/5] data-contract tests"
 PYTHONPATH="$ROOT" "$PYTHON_BIN" -B -m unittest discover \

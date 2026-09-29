@@ -12,6 +12,7 @@ confused with a missing local data package:
 | API smoke | Search, region, gene, transcript, protein features, and sequence work together | Yes |
 | Browser acceptance | Pan/zoom, labels, expansion, filters, comparison, exports, and keyboard behavior | Yes |
 | Full release gate | Full-build counts, checksums, deterministic rebuild, offline bundle, and startup | Yes |
+| Optional Mac launcher | Private packaging/data clones, build/frontend readiness, owned-process shutdown | Yes |
 
 ## 1. Run the source checks
 
@@ -46,8 +47,10 @@ split codons, and the released package's public manual-feature/exon APIs using
 synthetic data. It does not download a scientific fixture. `--require-frontend`
 remains available when only that dependency must be mandatory.
 
-The GitHub Actions workflow repeats source tests and an R adapter integration
-test on clean runners. CI does not download the full scientific catalog.
+The GitHub Actions workflow repeats source tests, packaging-helper fixtures,
+and an R adapter integration test on clean runners. It also compiles/ad-hoc
+signs the native Mac launcher. CI does not download the full scientific catalog
+or claim a native generated-data installation.
 
 ## 2. Build the small SP1 acceptance fixture
 
@@ -205,3 +208,13 @@ interpretation review—are listed in [`release_checklist.md`](release_checklist
 - An empty feature response can be biologically valid (for example a transcript
   with no available calls in the selected sources);
   distinguish it from an HTTP or build-validation error.
+
+## Optional native Mac checks
+
+See [the desktop launcher guide](../desktop_app/README.md#update-or-diagnose)
+for installation, no-window/no-browser `--self-test`, and a temporary-home
+replay. The cross-platform backend suite tests archive contents, runtime versus
+scientific identity, private independent clones, unchanged source files,
+corrupt code/data rejection, non-overwrite, traversal/symlink boundaries, and
+optional-reference relocation/receipts using a tiny synthetic reference.
+It does not replace full-genome reference or physical Dock/Finder checks.

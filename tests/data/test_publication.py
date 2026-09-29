@@ -45,6 +45,22 @@ class PublicationAuditTests(unittest.TestCase):
             self.assertIn("private/local path", error.getvalue())
             self.assertIn("credential-like assignment", error.getvalue())
 
+    def test_force_staged_app_and_runtime_manifest_are_rejected_outside_default_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            (root / ".gitignore").write_text("*.app/\n", encoding="utf-8")
+            generated = root / "custom-output/Local.app/Contents/Resources/Runtime-manifest.json"
+            generated.parent.mkdir(parents=True)
+            generated.write_text("{}", encoding="utf-8")
+            subprocess.run(["git", "add", "-f", str(generated.relative_to(root))], cwd=root, check=True)
+            (root / "Runtime.zip").write_bytes(b"synthetic private archive")
+            error = io.StringIO()
+            with patch.object(audit, "ROOT", root), contextlib.redirect_stderr(error):
+                self.assertEqual(audit.main(), 1)
+            self.assertIn("private/generated desktop runtime", error.getvalue())
+            self.assertIn("Runtime.zip", error.getvalue())
+
     def test_zip_checkout_without_git_uses_source_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

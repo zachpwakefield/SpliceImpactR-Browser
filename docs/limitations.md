@@ -2,6 +2,12 @@
 
 The checked normal package materializes the full primary-contig GENCODE v45 annotation and all seven locally supplied protein-feature sources. The separate SP1 package remains an explicitly labeled acceptance fixture; normal startup cannot silently fall back to it.
 
+The latest isolated public-source installation, complete-model inventory,
+corrected Linux CI, cross-engine observations, and private Mac packaging
+evidence are recorded in [setup_validation.md](setup_validation.md). The dated
+application-1.1.x observations below remain historical evidence, not proof that
+every platform or human-review gate passed in the current setup audit.
+
 The release makes only the claims supported by the local inputs:
 
 - The catalog is unmodified GENCODE v45 / Ensembl 111, not the current Ensembl

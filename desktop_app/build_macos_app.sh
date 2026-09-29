@@ -4,17 +4,41 @@ set -euo pipefail
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SOURCE_DIR="$ROOT/desktop_app"
 OUTPUT_APP="${1:-$SOURCE_DIR/dist/Transcript Browser.app}"
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "The optional desktop launcher can only be built on macOS. Use ./run_local.sh on Linux/WSL2." >&2
+  exit 2
+fi
+if ! xcrun --find swiftc >/dev/null 2>&1; then
+  echo "Install Apple's Xcode Command Line Tools (xcode-select --install), then retry." >&2
+  exit 2
+fi
+if [[ ! -x "$ROOT/.venv/bin/python" ]] || [[ ! -f "$ROOT/frontend/dist/index.html" ]]; then
+  echo "First complete ./scripts/setup_local.sh --no-start in this checkout." >&2
+  exit 2
+fi
+case "$OUTPUT_APP" in
+  *.app) ;;
+  *) echo "The output must be an .app bundle path." >&2; exit 2 ;;
+esac
+if [[ -L "$OUTPUT_APP" ]] || { [[ -e "$OUTPUT_APP" ]] && [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$OUTPUT_APP/Contents/Info.plist" 2>/dev/null || true)" != "local.transcript-browser.launcher" ]]; }; then
+  echo "Refusing to replace an unrelated file or bundle at the output path." >&2
+  exit 2
+fi
+ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64|x86_64) ;;
+  *) echo "Unsupported Mac architecture: $ARCH" >&2; exit 2 ;;
+esac
 STAGE="$(mktemp -d /private/tmp/transcript-browser-launcher.XXXXXX)"
 STAGED_APP="$STAGE/Transcript Browser.app"
 CONTENTS="$STAGED_APP/Contents"
 trap 'rm -rf "$STAGE"' EXIT
 
-rm -rf "$OUTPUT_APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources" "$STAGE/ModuleCache"
 
 xcrun swiftc \
   -O \
-  -target arm64-apple-macosx12.0 \
+  -target "$ARCH-apple-macosx12.0" \
   -module-cache-path "$STAGE/ModuleCache" \
   -framework AppKit \
   "$SOURCE_DIR/TranscriptBrowserLauncher.swift" \
@@ -31,6 +55,7 @@ codesign --force --deep --sign - "$STAGED_APP"
 codesign --verify --deep --strict "$STAGED_APP"
 
 mkdir -p "$(dirname -- "$OUTPUT_APP")"
+if [[ -e "$OUTPUT_APP" ]]; then rm -rf "$OUTPUT_APP"; fi
 ditto --norsrc --noextattr "$STAGED_APP" "$OUTPUT_APP"
 verified=0
 for _ in 1 2 3 4 5; do
