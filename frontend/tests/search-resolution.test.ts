@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { exactSearchMatches, resolveSubmittedSearch } from "../src/lib/searchResolution";
+import { exactSearchMatches, resolveSubmittedSearch, selectableSearchResults } from "../src/lib/searchResolution";
 import type { SearchResult } from "../src/types";
 
 function result(overrides: Partial<SearchResult> & Pick<SearchResult, "kind" | "id" | "label">): SearchResult {
@@ -11,6 +11,25 @@ function result(overrides: Partial<SearchResult> & Pick<SearchResult, "kind" | "
     ...overrides,
   };
 }
+
+test("old options cannot be selected while a new query is loading, idle, or failed", () => {
+  const oldResults = [result({ kind: "gene", id: "ENSG00000102144", label: "PGK1", symbol: "PGK1" })];
+  for (const state of ["loading", "idle", "error"] as const) {
+    const selectable = selectableSearchResults(state, oldResults);
+    assert.deepEqual(selectable, []);
+    assert.equal(selectable[0], undefined);
+  }
+  assert.equal(oldResults.length, 1); // Guarding does not mutate annotation data.
+});
+
+test("ready options retain their identity and visual order for explicit selection", () => {
+  const ready = [
+    result({ kind: "gene", id: "ENSG00000185591", label: "SP1", symbol: "SP1" }),
+    result({ kind: "transcript", id: "ENST00000327443", label: "SP1-201" }),
+  ];
+  assert.equal(selectableSearchResults("ready", ready), ready);
+  assert.equal(selectableSearchResults("ready", ready)[1], ready[1]);
+});
 
 test("a unique exact gene symbol wins over child-entity prefix results", () => {
   const gene = result({

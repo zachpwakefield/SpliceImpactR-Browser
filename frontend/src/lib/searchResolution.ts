@@ -1,4 +1,14 @@
-import type { SearchResult } from "../types";
+import type { LoadState, SearchResult } from "../types";
+
+const NO_SELECTABLE_RESULTS: readonly SearchResult[] = Object.freeze([]);
+
+// The previous query's options must not remain actionable during a new search.
+export function selectableSearchResults(
+  state: LoadState,
+  results: readonly SearchResult[],
+): readonly SearchResult[] {
+  return state === "ready" ? results : NO_SELECTABLE_RESULTS;
+}
 
 export type SubmittedSearchResolution =
   | { kind: "navigate"; result: SearchResult }

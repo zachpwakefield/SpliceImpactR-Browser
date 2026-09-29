@@ -438,6 +438,7 @@ export default function App() {
       setSearchError(undefined);
       void searchLocal(query, controller.signal)
         .then((results) => {
+          if (controller.signal.aborted) return;
           setSearchResults(results);
           setSearchState("ready");
         })
@@ -868,6 +869,7 @@ export default function App() {
     setSearchState("loading");
     void searchLocal(value, controller.signal)
       .then((results) => {
+        if (controller.signal.aborted) return;
         setSearchResults(results);
         setSearchState("ready");
         const resolution = resolveSubmittedSearch(value, results);
@@ -1376,6 +1378,7 @@ export default function App() {
         onQueryChange={(value) => {
           navigationController.current?.abort();
           setQuery(value);
+          setSearchResults([]);
           setSearchMessage(undefined);
           setSearchState(value.trim() ? "loading" : "idle");
         }}

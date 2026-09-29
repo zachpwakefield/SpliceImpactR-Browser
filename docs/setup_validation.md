@@ -97,6 +97,28 @@ That exercised workflow produced no console errors/warnings, failed HTTP
 responses, or external resource requests. It does not prove performance under
 all cold-cache conditions or correctness under every supported engine.
 
+A subsequent replay with the updated Python 3.14 runtime exposed a real
+stale-search race: hovering a PGK1 option, replacing the query with SP1, and
+immediately submitting could activate the previous option. The query now
+clears the old choices, resets active selection, and exposes selectable options
+only in the ready state; aborted replies cannot publish stale results. Two
+additional frontend regressions passed (116 frontend tests total). A controlled
+800-ms SP1 response delay reproduced the fault before the change and selected
+SP1 correctly afterward with zero stale options. The complete PGK1/SP1/ANK2
+Chrome workflow, including local PDF download, then passed again with no console
+errors/warnings, failed HTTP responses, or external requests.
+
+Python 3.14 also passed verified full-database startup and live API smoke tests
+for both translated PGK1 models and canonical SP1. The annotation build hash
+was unchanged by these runtime/interface corrections.
+
+The final updated local core release gate then passed 43 data/builder,
+26 backend/API/PDF, and 116 frontend tests (185 total, no skips), along with
+TypeScript, production build, offline-bundle, full-startup, and conflict-copy
+checks. The data/builder suite used Python 3.14; the project backend suite used
+Python 3.9, with the separate 26-test Python 3.14 backend and live runtime replay
+also passing. This does not replace the independently required Linux R CI job.
+
 Final first-install review also added an explicit writable-library preflight.
 Its offline test creates a missing personal R library, promotes an existing
 writable library, and rejects an unset personal-library fallback. This avoids

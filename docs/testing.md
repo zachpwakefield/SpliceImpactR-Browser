@@ -150,6 +150,10 @@ Then check the following on the SP1 fixture:
    bundle makes no request to a CDN, analytics service, or non-loopback API.
    Repeat the core flow at a narrow and wide viewport and in at least two
    browser engines before treating the UI as release-ready.
+8. Hover a gene result, replace the query with a different complete gene symbol,
+   and immediately press Enter (also try a slowed API response in developer
+   tools). The old query's options must disappear while loading, and the new
+   exact gene must open. An old hovered/keyboard-selected option must not win.
 
 Record failures with the build hash, request URL, selected transcript/source,
 viewport, browser/version, and a screenshot. Do not attach local cache paths or

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatBaseCount, formatLocus } from "../lib/coordinates";
+import { selectableSearchResults } from "../lib/searchResolution";
 import type {
   BuildManifest,
   DisplayMode,
@@ -73,7 +74,7 @@ export function CommandBar({
   const blurTimer = useRef<number | undefined>(undefined);
   const [focused, setFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  useEffect(() => setActiveIndex(-1), [searchResults]);
+  useEffect(() => setActiveIndex(-1), [query, searchResults]);
   useEffect(() => () => {
     if (blurTimer.current !== undefined) window.clearTimeout(blurTimer.current);
   }, []);
@@ -91,20 +92,21 @@ export function CommandBar({
     setActiveIndex(-1);
   }
 
+  const selectableResults = selectableSearchResults(searchState, searchResults);
   const grouped = useMemo(() => {
     const groups = new Map<SearchEntityKind, SearchResult[]>();
-    searchResults.forEach((result) => {
+    selectableResults.forEach((result) => {
       const rows = groups.get(result.kind) ?? [];
       rows.push(result);
       groups.set(result.kind, rows);
     });
     return [...groups.entries()];
-  }, [searchResults]);
+  }, [selectableResults]);
   const showPalette = focused && query.trim().length > 0;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const selected = activeIndex >= 0 ? searchResults[activeIndex] : undefined;
+    const selected = activeIndex >= 0 ? selectableResults[activeIndex] : undefined;
     onSubmit(query, selected);
     closePaletteAndBlur();
   }
@@ -125,7 +127,10 @@ export function CommandBar({
           id="global-search-input"
           ref={inputRef}
           value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={(event) => {
+            setActiveIndex(-1);
+            onQueryChange(event.target.value);
+          }}
           onFocus={() => {
             cancelPendingBlur();
             setFocused(true);
@@ -143,13 +148,13 @@ export function CommandBar({
             } else if (event.key === "ArrowDown") {
               event.preventDefault();
               setFocused(true);
-              setActiveIndex((current) => Math.min(searchResults.length - 1, current + 1));
+              setActiveIndex((current) => Math.min(selectableResults.length - 1, current + 1));
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
               setActiveIndex((current) => Math.max(0, current - 1));
-            } else if (event.key === "Enter" && activeIndex >= 0 && searchResults[activeIndex]) {
+            } else if (event.key === "Enter" && activeIndex >= 0 && selectableResults[activeIndex]) {
               event.preventDefault();
-              onSubmit(query, searchResults[activeIndex]);
+              onSubmit(query, selectableResults[activeIndex]);
               closePaletteAndBlur();
             }
           }}
@@ -158,7 +163,7 @@ export function CommandBar({
           aria-controls={listId}
           aria-expanded={showPalette}
           aria-autocomplete="list"
-          aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
+          aria-activedescendant={activeIndex >= 0 && selectableResults[activeIndex] ? `${listId}-${activeIndex}` : undefined}
           aria-busy={searchState === "loading"}
           autoComplete="off"
           spellCheck={false}
@@ -168,7 +173,7 @@ export function CommandBar({
         <kbd>↵</kbd>
         {showPalette && (
           <div className="search-results" id={listId} role="listbox" aria-label="Local search results">
-            {searchState === "loading" && searchResults.length === 0 && (
+            {searchState === "loading" && (
               <div className="search-palette-state" role="status">Searching the local annotation index…</div>
             )}
             {searchState === "error" && (
@@ -185,7 +190,7 @@ export function CommandBar({
               <div className="search-result-group" role="group" aria-label={KIND_LABELS[kind]} key={kind}>
                 <div className="search-group-heading">{KIND_LABELS[kind]}</div>
                 {results.map((result) => {
-                  const index = searchResults.indexOf(result);
+                  const index = selectableResults.indexOf(result);
                   return (
                     <button
                       type="button"
