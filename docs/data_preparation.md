@@ -7,10 +7,54 @@ The shareable browser keeps scientific inputs out of the repository. `scripts/pr
 - SpliceImpactR from Bioconductor (the current release is 1.0.0 in Bioconductor 3.23/R 4.6; the generated manifest records the installed version).
 - GENCODE human release 45 (GTF, protein-coding transcript FASTA, and translated-protein FASTA).
 - Ensembl release 111 for BioMart protein-feature queries, the release paired with GENCODE v45.
-- ELM for linear motifs, retrieved by SpliceImpactR.
+- ELM for public validated motif instances, mapped/sequence-confirmed by the
+  preparation adapter and normalized with SpliceImpactR.
 - Optional Ensembl release 115 GRCh38.p14 top-level reference FASTA for byte-range serving. The builder checks the reference SHA-256 and `.fai` index against the values in `backend/builder/constants.py` when this input is supplied.
 
-The first three inputs are obtained through SpliceImpactR's BiocFileCache-backed annotation and feature functions. The script uses the package's public `get_annotation()` and `get_protein_features()` APIs, plus BiocFileCache's public path lookup to copy the raw GENCODE files into the browser cache. It does not call SpliceImpactR private functions. If a future Bioconductor release changes its cache layout, pass all three raw files explicitly with `--gtf`, `--transcript-fa`, and `--protein-fa`.
+The raw GENCODE assets are downloaded directly from the official release-45
+directory with public BiocFileCache APIs and checked against the pinned raw-file
+MD5s. They are copied unchanged. The complete-model adapter reads the GTF with
+public `rtracklayer` APIs and the protein FASTA with `Biostrings`, then calls
+the release-pinned feature adapter and SpliceImpactR's public
+`get_manual_features()` API. It does not use package
+internals or vendor SpliceImpactR source. Existing files can be supplied with
+all three of `--gtf`, `--transcript-fa`, and `--protein-fa`.
+
+## Annotation is not filtered
+
+Every source gene/transcript model is retained: 63,187 genes and 252,930
+transcripts in this pinned raw GTF. TSL 1–5, unscored/NA values, all biotypes, and
+`cds_start_NF`/`cds_end_NF` models are included. A SHA-256 of the complete sorted
+transcript inventory is compared with the builder's independently imported
+inventory. TSL and CDS-completeness flags are metadata, not selection rules.
+
+Do not substitute `SpliceImpactR::get_annotation()` here. Its analysis defaults
+select TSL 1–3 and exclude incomplete CDS rows, and its explicit 1–5 selector
+still does not include unscored models. The browser adapter has no TSL selector.
+
+Protein-feature coverage does not define model coverage. SpliceImpactR 1.0.0's
+own BioMart helper selects `protein_coding` and relies on automatic archive
+discovery. The browser instead connects to the explicit, registry-verified
+Ensembl 111 archive with public biomaRt APIs and no TSL/biotype selector. It
+processes these query results through public `get_manual_features()`. ELM
+requires mapped, sequence-confirmed instances. Upstream feature normalization/deduplication is
+retained. Noncoding, feature-empty, missing-sequence, and partial-CDS transcripts
+stay in the catalog. Runtime genomic features are drawn only when the builder
+can establish an exact translation/CDS map. The optional exon audit does not
+determine browser geometry.
+
+The documented BioMart `Mart` class and `useDataset()` API validate the explicit
+dataset without discovering archives through the current Ensembl website.
+This compatibility path does not patch package namespaces or fall back to a
+different release. The public manual-feature processor has a minus-strand
+bounding-name defect in SpliceImpactR 1.0.0; the browser omits those names and
+recomputes exact geometry independently. No incorrect upstream bounding span
+is substituted for the raw-GTF coding map.
+
+ELM's documented endpoints used by SpliceImpactR 1.0.0 are HTTP. They carry no
+private data/credentials; actual download SHA-256s are recorded, but these are
+integrity receipts, not authenticated official signatures. Verify upstream
+terms and data provenance before redistributing scientific outputs.
 
 The seven source tables map to browser lanes as follows:
 
@@ -39,7 +83,15 @@ Rscript scripts/prepare_spliceimpactr_cache.R \
 
 The installer delegates to `BiocManager::install("SpliceImpactR")`, which selects the Bioconductor repository compatible with the installed R release and installs declared imports. The browser runtime itself requires only the generated SQLite build and Python/frontend dependencies.
 
-The default `--filter-tsl 1,2,3` matches the browser's audited feature cache. Use `--filter-tsl 1,2,3,4,5` only when intentionally rebuilding and re-auditing the expected feature counts. `--force` refreshes the BiocFileCache and rewrites existing RDS outputs.
+There is no `--filter-tsl` flag. `--force` refreshes protein-feature queries and
+rewrites their RDS outputs, without changing model coverage.
+
+Each completed source has a signature/digest receipt. Rerunning resumes verified
+sources; changing the input, package version, adapter code, or a source's bytes
+invalidates its receipt. Legacy filtered RDS outputs without matching receipts
+are rebuilt. The final v2 preparation manifest is published only after all
+seven sources succeed. A failed query is never silently represented as a
+successful empty source.
 
 The exon-level audit table is generated by default. Add `--skip-exon` when only the seven builder inputs are needed and memory is constrained.
 
@@ -54,7 +106,15 @@ Rscript scripts/prepare_spliceimpactr_cache.R \
   --protein-fa /path/to/gencode.v45.pc_translations.fa.gz
 ```
 
-The script also derives `exon_features.rds` with `SpliceImpactR::get_exon_features()` for an exon-level audit/provenance view. The browser builder does not trust that derived table as its source of geometry; it recomputes its own projections from the raw GTF and seven feature tables. The generated `spliceimpactr_manifest.json` contains only relative filenames, release identifiers, package version, and feature counts. It deliberately omits usernames, absolute paths, host details, timestamps, and cache internals.
+The script also derives `exon_features.rds` with `SpliceImpactR::get_exon_features()` for an exon-level audit/provenance view. The browser builder does not trust that derived table as its source of geometry; it recomputes its own projections from the raw GTF and seven feature tables. The generated `spliceimpactr_manifest.json` contains relative filenames, release identifiers, installed versions, the complete inventory, no-filter policy, feature counts, and input digests. It deliberately omits usernames, absolute paths, host details, timestamps, and cache internals.
+
+Raw GENCODE release identity is verified against official-file MD5 pins.
+Generated RDS SHA-256s are integrity receipts for this preparation, not official
+database signatures or one developer's required serialization. The builder
+compares actual imported source counts with those receipts and records them in
+its immutable build identity. Feature results may change after an explicit
+refresh (especially ELM); archive your local build and receipts when publishing
+analyses. Source counts alone do not prove complete remote feature coverage.
 
 ## Optional reference FASTA
 
@@ -72,7 +132,7 @@ When supplied, the SHA-256 must match `REFERENCE_FASTA_SHA256` and the index dig
 ## Build and verify
 
 ```bash
-./scripts/build_annotations.sh data/cache --scope full
+PYTHON=.venv/bin/python ./scripts/build_annotations.sh data/cache --scope full
 
 # Optional reference-enabled build:
 ./scripts/build_annotations.sh data/cache \

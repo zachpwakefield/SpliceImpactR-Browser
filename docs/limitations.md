@@ -4,10 +4,17 @@ The checked normal package materializes the full primary-contig GENCODE v45 anno
 
 The release makes only the claims supported by the local inputs:
 
+- The catalog is unmodified GENCODE v45 / Ensembl 111, not the current Ensembl
+  website. Every source model is retained, including TSL 4/5, unscored and
+  incomplete-CDS models. The explicit BioMart adapter has no TSL/biotype query
+  selector, but source availability, sequence confirmation, and SpliceImpactR
+  normalization still limit feature coverage for individual isoforms. Model
+  completeness does not guarantee protein-feature coverage. Catalog upgrades require a
+  coordinated scientific release-contract change.
 - Search indexes GTF names and stable identifiers, not a complete HGNC synonym catalog, and is not typo tolerant.
 - A unique exact gene-symbol submission navigates directly to that gene even when transcript or prefix suggestions are present. This is a navigation rule, not synonym inference: distinct gene records with the same exact symbol remain ambiguous and require stable-ID/locus selection.
 - Noncoding transcript sequences are absent from the supplied FASTA set.
-- Protein features have local source, accession, method, interval, and audit provenance, but no confidence scores, e-values, or source-release metadata.
+- Protein features have local source, accession, method, interval, and audit provenance, but no confidence scores, e-values, or per-database release labels. Preparation records the Ensembl archive release and ELM download digests separately.
 - Overlapping calls remain independent source records; the app does not infer a consensus or guess domain/family/repeat/site classes for InterPro, Pfam, or CDD.
 - Partial translation mappings may support a continuous amino-acid annotation but are deliberately prohibited from genomic projection. Unresolved mappings are never drawn genomically.
 - Whole-genome GRCh38.p14 reference serving is optional. If enabled, the external FASTA and FAI are checksum-declared symlink targets; moving the project requires supplying and registering an equivalent indexed reference rather than editing manifests by hand. Without it, transcript/protein browsing remains available but reference-range requests are unavailable.

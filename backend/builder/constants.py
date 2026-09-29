@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 SCHEMA_VERSION = "1.1.0"
-BUILDER_VERSION = "0.3.0"
+BUILDER_VERSION = "0.4.0"
 
 GENCODE_RELEASE = "GENCODE v45"
 ENSEMBL_RELEASE = 111
@@ -40,18 +40,26 @@ FEATURE_SOURCES = OrderedDict(
     ]
 )
 
-# The seven local RDS files are user-supplied scientific inputs just like the
-# GTF and FASTAs.  A digest recorded without an expected value is provenance,
-# not verification, so pin the audited cache here and fail closed on drift.
-FEATURE_INPUT_SHA256 = {
-    "interpro.rds": "405ef4bf6cf95d4174ba331425a15834158099bbbb598b200b17a07db816aa1a",
-    "pfam.rds": "5a124ad158d99ec9a0f599dbf23561c536a094e689071a96db5868daa3e8449c",
-    "cdd.rds": "c843bbd39cde0f5dad4429c7bec0a27ac0aa43d28778fda78fbd50e95318d421",
-    "tmhmm.rds": "52cadbd6ca76bfebd0876617617281814527e50996d335dbb441d5429aa1fa11",
-    "signalp.rds": "b4a4c452a667f14eb6e02fcc3fe9b9b9e54fa6e8238422c614c1b538e0b87195",
-    "mobidblite.rds": "48408802d861028171973153b8310baac69c9bc05d61c64d9ebf5eb51ef0d3e9",
-    "elm.rds": "da474a06bfb388169cb27fa0d2d9402267f07348d1d2739c1baa23ab9f8cfade",
+PREPARATION_MANIFEST = "spliceimpactr_manifest.json"
+PREPARATION_SCHEMA = "transcript-browser-spliceimpactr-cache/v2"
+ANNOTATION_POLICY = {
+    "transcript_support_level_filter": None,
+    "transcript_biotype_filter": None,
+    "exclude_incomplete_cds": False,
 }
+FEATURE_QUERY_POLICY = {
+    "biomart_transcript_biotype_filter": None,
+    "provider": "explicit-release-111-archive/public-biomaRt",
+    "normalization_api": "SpliceImpactR::get_manual_features",
+    "annotation_models_removed": False,
+    "test_fixture": False,
+    "combine_overlaps": False,
+}
+FEATURE_COLUMNS = (
+    "ensembl_transcript_id", "start", "stop", "chr", "strand",
+    "feature_id", "clean_name", "alt_name", "database",
+    "ensembl_peptide_id", "method", "name",
+)
 
 EXPECTED_GTF_FEATURE_ROWS = OrderedDict(
     [
@@ -69,25 +77,10 @@ EXPECTED_GTF_TOTAL_ROWS = 3_427_477
 EXPECTED_PC_TRANSCRIPT_FASTA_RECORDS = 111_048
 EXPECTED_PC_TRANSLATION_FASTA_RECORDS = 111_048
 
-# rows, distinct transcript IDs, and distinct non-missing feature accessions.
-EXPECTED_FEATURE_AUDIT = OrderedDict(
-    [
-        ("interpro", (426_721, 42_321, 16_298)),
-        ("pfam", (88_496, 38_958, 6_449)),
-        ("cdd", (35_697, 20_604, 6_733)),
-        ("tmhmm", (32_513, 9_659, 1)),
-        ("signalp", (6_085, 6_085, 2)),
-        ("mobidblite", (97_414, 23_712, 1)),
-        ("elm", (3_179, 1_844, 275)),
-    ]
-)
-
 # Power-of-four levels keep broad queries small while providing a useful
 # overview at intermediate spans. Tiles are complete (zero-count rows included)
 # and use the same 0-based half-open convention as every machine coordinate.
 DENSITY_TILE_SIZES = (16_384, 65_536, 262_144, 1_048_576)
-
-SUPPORTED_R_VERSION = "4.5.2"
 
 OFFICIAL_GENCODE_PRIMARY_GENOME_GZ_MD5 = "ad62ff4d71d0b5b8d7feabbec5ce86bf"
 

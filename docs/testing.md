@@ -28,7 +28,7 @@ when `frontend/node_modules` is present; otherwise the script reports a skip.
 To make a missing frontend install an error (for CI or a release candidate):
 
 ```bash
-./scripts/test_source.sh --require-frontend
+./scripts/test_source.sh --require-all
 ```
 
 Install the frontend separately in a networked environment when needed:
@@ -39,7 +39,15 @@ pnpm install --frozen-lockfile
 cd ..
 ```
 
-The GitHub Actions workflow repeats these checks on a clean runner.
+`--require-all` requires the backend, frontend, and released R dependencies,
+and runs `tests/r/test_browser_annotation.R`. The latter independently checks
+all TSLs, unscored values, other biotypes, incomplete CDS, PAR_Y IDs, both-strand
+split codons, and the released package's public manual-feature/exon APIs using
+synthetic data. It does not download a scientific fixture. `--require-frontend`
+remains available when only that dependency must be mandatory.
+
+The GitHub Actions workflow repeats source tests and an R adapter integration
+test on clean runners. CI does not download the full scientific catalog.
 
 ## 2. Build the small SP1 acceptance fixture
 
@@ -48,7 +56,7 @@ optional and is only needed to exercise the reference-range endpoint; keep all
 generated inputs outside Git (the paths below are placeholders):
 
 ```bash
-./scripts/build_annotations.sh /path/to/annotation-cache \
+PYTHON=.venv/bin/python ./scripts/build_annotations.sh /path/to/annotation-cache \
   --scope sp1
 ```
 
@@ -61,10 +69,15 @@ checks in `tests/data/test_sp1_build.py`, which require:
 
 - exactly `SP1-201`, `SP1-202`, `SP1-203`, and `SP1-204`;
 - protein lengths 785, 778, 230, and 162 amino acids, respectively;
-- feature-source totals of InterPro 20, Pfam 6, MobiDB-lite 14, ELM 2, and zero
-  rows for CDD, TMHMM, and SignalP in this fixture; and
-- an exact 230-aa protein sequence with an explicit empty-feature state for
-  `SP1-203`.
+- feature-source totals matching the actual prepared/exported source receipts;
+- an exact 230-aa protein sequence for `SP1-203`, regardless of feature coverage;
+  and
+- exact-only genomic projections with foreign-key/database integrity checks.
+
+Do not require `SP1-203` to have zero features merely because an older
+TSL-filtered cache omitted it. Empty-feature behavior is tested with a separate
+synthetic fixture. A full build additionally requires the complete raw-GTF
+inventory and PGK1's six v45 models, including its TSL 5 and unscored models.
 
 If the cache has not been prepared yet, run
 `scripts/prepare_spliceimpactr_cache.R` as described in
@@ -125,8 +138,9 @@ Then check the following on the SP1 fixture:
 3. Expand `SP1-201`; choose **Protein features**; toggle source databases and
    prediction filters; hover a feature and confirm genomic/protein
    cross-highlighting.
-4. Open `SP1-203` and confirm its 230-aa sequence is available while the
-   feature panel says no local features, rather than showing an error.
+4. Open `SP1-203` and confirm its 230-aa sequence is available. Inspect its
+   actual feature coverage; test a feature-empty transcript separately and
+   confirm an explicit empty state rather than an error.
 5. Pin and compare transcripts, reorder/keyboard-navigate rows, and reload a
    deep link. Verify that stale build state is rejected rather than silently
    applied.
@@ -149,6 +163,23 @@ been produced, run:
 ```bash
 ./scripts/verify_release.sh
 ```
+
+To produce the two-build receipt, preserve the first build's three small
+receipts, rebuild with identical inputs/code, and compare:
+
+```bash
+mkdir -p output/first-build-receipts
+cp data/builds/gencode_v45/{manifest.json,validation_report.json,build_metrics.json} output/first-build-receipts/
+PYTHON=.venv/bin/python ./scripts/build_annotations.sh data/cache --scope full
+.venv/bin/python scripts/verify_deterministic_build.py \
+  output/first-build-receipts data/builds/gencode_v45 \
+  --output data/builds/gencode_v45/determinism_receipt.json
+```
+
+The publication audit checks publishable Git files, not ignored local caches.
+It must still pass after a full setup, and must fail if generated data is
+accidentally tracked/staged. It is a conservative pattern audit, not a proof
+that arbitrary private information can never be present; review staged files.
 
 That gate checks the full manifest, two-build determinism, all Python/backend
 and frontend tests, the offline bundle audit, full database startup, and

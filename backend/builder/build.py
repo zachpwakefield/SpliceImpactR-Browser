@@ -35,16 +35,15 @@ from .constants import (
     BUILDER_VERSION,
     DENSITY_TILE_SIZES,
     ENSEMBL_RELEASE,
-    EXPECTED_FEATURE_AUDIT,
     EXPECTED_GTF_FEATURE_ROWS,
     EXPECTED_GTF_TOTAL_ROWS,
     EXPECTED_PC_TRANSCRIPT_FASTA_RECORDS,
     EXPECTED_PC_TRANSLATION_FASTA_RECORDS,
-    FEATURE_INPUT_SHA256,
     FEATURE_SOURCES,
     GENCODE_RELEASE,
     OFFICIAL_GENCODE_PRIMARY_GENOME_GZ_MD5,
     PRIMARY_CONTIG_LENGTHS,
+    PREPARATION_MANIFEST,
     REFERENCE_FASTA_SHA256,
     REFERENCE_FAI_SHA256,
     REFERENCE_PROVENANCE,
@@ -75,6 +74,7 @@ from .schema import (
     populate_density_tiles,
     populate_search,
 )
+from .source_manifest import read_preparation_manifest, transcript_inventory_digest
 
 
 class BuildError(RuntimeError):
@@ -125,7 +125,8 @@ def build_lock(output_root: Path) -> Iterator[None]:
         os.close(descriptor)
 
 
-def validate_source_inputs(source: Path) -> dict[str, dict[str, Any]]:
+def validate_source_inputs(source: Path, preparation: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    preparation = preparation if preparation is not None else read_preparation_manifest(source)
     results: dict[str, dict[str, Any]] = {}
     missing = [name for name in [*REQUIRED_INPUTS, *FEATURE_SOURCES.values()] if not (source / name).is_file()]
     if missing:
@@ -138,44 +139,58 @@ def validate_source_inputs(source: Path) -> dict[str, dict[str, Any]]:
             raise BuildError(
                 f"Checksum mismatch for {path}: expected {expected_md5}, got {actual_md5}"
             )
+        if path.stat().st_size != preparation["raw_inputs"][filename]["size"]:
+            raise BuildError(f"Preparation file-size mismatch for {filename}")
         results[filename] = {
             "path": filename,
             "size": path.stat().st_size,
             "md5": actual_md5,
             "verified": True,
+            "verification_scope": "official_release_md5",
         }
 
-    for filename in FEATURE_SOURCES.values():
+    for source_name, filename in FEATURE_SOURCES.items():
         path = source / filename
         actual_sha256 = file_digest(path, "sha256")
-        expected_sha256 = FEATURE_INPUT_SHA256[filename]
+        receipt = preparation["feature_sources"][source_name]
+        expected_sha256 = receipt["sha256"]
         if actual_sha256 != expected_sha256:
             raise BuildError(
                 f"Checksum mismatch for {path}: expected {expected_sha256}, "
                 f"got {actual_sha256}"
             )
+        if path.stat().st_size != receipt["size"]:
+            raise BuildError(f"Preparation file-size mismatch for {filename}")
         results[filename] = {
             "path": filename,
             "size": path.stat().st_size,
             "sha256": actual_sha256,
             "verified": True,
+            "verification_scope": "integrity_against_preparation_receipt",
         }
+    manifest_path = source / PREPARATION_MANIFEST
+    results[PREPARATION_MANIFEST] = {
+        "path": PREPARATION_MANIFEST,
+        "size": manifest_path.stat().st_size,
+        "sha256": file_digest(manifest_path, "sha256"),
+        "verified": True,
+        "verification_scope": "preparation_contract_and_inventory",
+    }
     return results
 
 
 def validate_r_environment(project_root: Path, rscript: str) -> None:
     expression = (
         "source(commandArgs(trailingOnly=TRUE)[1]); "
-        "run_dependency_preflight(commandArgs(trailingOnly=TRUE)[2], "
-        "commandArgs(trailingOnly=TRUE)[3])"
+        "run_dependency_preflight(commandArgs(trailingOnly=TRUE)[2])"
     )
     command = [
         rscript,
+        "--vanilla",
         "-e",
         expression,
         str(project_root / "r" / "preflight.R"),
-        str(project_root / "r" / "dependencies.lock.tsv"),
-        str(project_root / "r" / "renv.lock"),
+        str(project_root / "r" / "requirements.tsv"),
     ]
     try:
         result = subprocess.run(
@@ -808,6 +823,7 @@ def run_feature_export(
     transcript_file.write_text("".join(f"{item}\n" for item in sorted(transcript_ids)), encoding="ascii")
     command = [
         rscript,
+        "--vanilla",
         str(project_root / "r" / "export_features.R"),
         "--input",
         str(source),
@@ -1178,6 +1194,7 @@ def validate_full_acceptance(
     fasta_summary: dict[str, Any],
     export_manifest: dict[str, Any],
     feature_summary: dict[str, Any],
+    preparation: dict[str, Any],
 ) -> list[str]:
     errors: list[str] = []
     if gtf_summary["total_feature_rows"] != EXPECTED_GTF_TOTAL_ROWS:
@@ -1192,7 +1209,10 @@ def validate_full_acceptance(
     if fasta_summary != expected_fasta:
         errors.append(f"FASTA audit: expected {expected_fasta}, got {fasta_summary}")
 
-    for source, (rows, distinct_transcripts, distinct_features) in EXPECTED_FEATURE_AUDIT.items():
+    for source, receipt in preparation["feature_sources"].items():
+        rows, distinct_transcripts, distinct_features = (
+            receipt["rows"], receipt["distinct_transcripts"], receipt["distinct_feature_ids"]
+        )
         exported = export_manifest["sources"].get(source, {})
         actual = (
             exported.get("rows"),
@@ -1209,11 +1229,14 @@ def validate_full_acceptance(
             )
 
     errors.extend(validate_density_tiles(connection))
+    identifiers = (row[0] for row in connection.execute("SELECT transcript_id FROM transcript"))
+    if transcript_inventory_digest(identifiers) != preparation["annotation_inventory"]["transcript_ids_sha256"]:
+        errors.append("Prepared feature annotation does not represent the complete raw GTF transcript inventory")
     return errors
 
 
 def validate_sp1_acceptance(
-    connection: sqlite3.Connection, feature_counts: dict[str, int]
+    connection: sqlite3.Connection, feature_counts: dict[str, int], export_manifest: dict[str, Any]
 ) -> list[str]:
     errors: list[str] = []
     expected_lengths = {
@@ -1229,25 +1252,14 @@ def validate_sp1_acceptance(
     )
     if actual_lengths != expected_lengths:
         errors.append(f"SP1 protein lengths: expected {expected_lengths}, got {actual_lengths}")
-    expected_features = {
-        "interpro": 20,
-        "pfam": 6,
-        "cdd": 0,
-        "tmhmm": 0,
-        "signalp": 0,
-        "mobidblite": 14,
-        "elm": 2,
-    }
+    expected_features = {source: export_manifest["sources"][source]["rows"] for source in FEATURE_SOURCES}
     if feature_counts != expected_features:
         errors.append(f"SP1 feature counts: expected {expected_features}, got {feature_counts}")
-    sp1_203_features = connection.execute(
-        "SELECT COUNT(*) FROM protein_feature WHERE transcript_id='ENST00000548560'"
-    ).fetchone()[0]
     sp1_203_protein = connection.execute(
         "SELECT length FROM sequence WHERE transcript_id='ENST00000548560' AND kind='protein'"
     ).fetchone()
-    if sp1_203_features != 0 or not sp1_203_protein or sp1_203_protein[0] != 230:
-        errors.append("SP1-203 must retain its 230-aa protein and have zero local features")
+    if not sp1_203_protein or sp1_203_protein[0] != 230:
+        errors.append("SP1-203 must retain its 230-aa protein regardless of feature coverage")
     return errors
 
 
@@ -1281,10 +1293,13 @@ def toolchain_hashes(project_root: Path) -> dict[str, str]:
         "backend/builder/parsers.py",
         "backend/builder/projection.py",
         "backend/builder/schema.py",
+        "backend/builder/source_manifest.py",
         "r/export_features.R",
         "r/preflight.R",
-        "r/dependencies.lock.tsv",
-        "r/renv.lock",
+        "r/requirements.tsv",
+        "r/browser_annotation.R",
+        "r/archive_features.R",
+        "scripts/prepare_spliceimpactr_cache.R",
     )
     return {
         relative_path: file_digest(project_root / relative_path, "sha256")
@@ -1397,7 +1412,8 @@ def build(args: argparse.Namespace) -> Path:
         build_timestamp = deterministic_timestamp(
             source / "gencode.v45.annotation.gtf.gz"
         )
-        input_manifest = validate_source_inputs(source)
+        preparation = read_preparation_manifest(source)
+        input_manifest = validate_source_inputs(source, preparation)
         reference = validate_reference(args.reference_fasta)
         validate_r_environment(project_root, args.rscript)
         build_toolchain_hashes = toolchain_hashes(project_root)
@@ -1515,7 +1531,7 @@ def build(args: argparse.Namespace) -> Path:
             if args.scope == "sp1":
                 validation_errors.extend(
                     validate_sp1_acceptance(
-                        connection, feature_summary["feature_counts"]
+                        connection, feature_summary["feature_counts"], export_manifest
                     )
                 )
                 validation_errors.extend(validate_density_tiles(connection))
@@ -1527,6 +1543,7 @@ def build(args: argparse.Namespace) -> Path:
                         fasta_summary,
                         export_manifest,
                         feature_summary,
+                        preparation,
                     )
                 )
             foreign_key_errors = [tuple(row) for row in connection.execute("PRAGMA foreign_key_check")]
@@ -1572,6 +1589,7 @@ def build(args: argparse.Namespace) -> Path:
                     }
                     for source_name in FEATURE_SOURCES
                 ],
+                "feature_preparation": preparation,
                 "capabilities": {
                     "search": True,
                     "region": True,
@@ -1608,6 +1626,7 @@ def build(args: argparse.Namespace) -> Path:
                 "translation_mapping": translation_summary,
                 "features": feature_summary,
                 "feature_export": export_manifest,
+                "feature_preparation": preparation,
                 "reference": {
                     "available": reference_manifest["available"],
                     "verified": reference_manifest["verified"],

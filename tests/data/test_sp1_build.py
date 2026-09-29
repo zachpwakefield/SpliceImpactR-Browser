@@ -7,6 +7,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
+from backend.builder.constants import ANNOTATION_POLICY, FEATURE_SOURCES
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BUILD_DIR = PROJECT_ROOT / "data" / "builds" / "sp1_fixture"
@@ -37,26 +38,22 @@ class SP1BuildAcceptanceTests(unittest.TestCase):
         )
         self.assertEqual(rows[2]["transcript_id_versioned"], "ENST00000548560.1")
 
-    def test_feature_source_counts_and_sp1_203_empty_state(self) -> None:
+    def test_feature_source_counts_match_this_preparation(self) -> None:
         actual = dict(
             self.connection.execute(
                 "SELECT source, COUNT(*) FROM protein_feature GROUP BY source"
             ).fetchall()
         )
+        manifest = json.loads((BUILD_DIR / "manifest.json").read_text())
+        report = json.loads((BUILD_DIR / "validation_report.json").read_text())
         expected = {
-            "interpro": 20,
-            "pfam": 6,
-            "cdd": 0,
-            "tmhmm": 0,
-            "signalp": 0,
-            "mobidblite": 14,
-            "elm": 2,
+            source: report["feature_export"]["sources"][source]["rows"]
+            for source in FEATURE_SOURCES
         }
         self.assertEqual({source: actual.get(source, 0) for source in expected}, expected)
-        count = self.connection.execute(
-            "SELECT COUNT(*) FROM protein_feature WHERE transcript_id='ENST00000548560'"
-        ).fetchone()[0]
-        self.assertEqual(count, 0)
+        self.assertEqual(manifest["feature_preparation"]["annotation_policy"], ANNOTATION_POLICY)
+        # SP1-203 was absent from the old TSL-filtered feature input. A complete
+        # annotation must not hard-code that absence as biological ground truth.
         protein = self.connection.execute(
             "SELECT length FROM sequence WHERE transcript_id='ENST00000548560' AND kind='protein'"
         ).fetchone()
@@ -93,26 +90,27 @@ class SP1BuildAcceptanceTests(unittest.TestCase):
     def test_repeat_build_has_identical_manifest_and_no_backup(self) -> None:
         configured_cache = os.environ.get("TRANSCRIPT_BROWSER_TEST_CACHE")
         configured_reference = os.environ.get("TRANSCRIPT_BROWSER_TEST_REFERENCE")
-        if not configured_cache or not configured_reference:
+        if not configured_cache:
             self.skipTest(
-                "Set TRANSCRIPT_BROWSER_TEST_CACHE and TRANSCRIPT_BROWSER_TEST_REFERENCE "
+                "Set TRANSCRIPT_BROWSER_TEST_CACHE "
                 "to run the local-input repeat-build test"
             )
         cache = Path(configured_cache).expanduser()
-        reference = Path(configured_reference).expanduser()
-        if not cache.is_dir() or not reference.is_file():
+        reference = Path(configured_reference).expanduser() if configured_reference else None
+        if not cache.is_dir() or (reference and not reference.is_file()):
             self.skipTest("Audited local inputs are unavailable")
         before = (BUILD_DIR / "manifest.json").read_bytes()
         report_before = (BUILD_DIR / "validation_report.json").read_bytes()
-        subprocess.run(
-            [
+        command = [
                 str(PROJECT_ROOT / "scripts" / "build_annotations.sh"),
                 str(cache),
-                "--reference-fasta",
-                str(reference),
                 "--scope",
                 "sp1",
-            ],
+            ]
+        if reference:
+            command.extend(["--reference-fasta", str(reference)])
+        subprocess.run(
+            command,
             cwd=PROJECT_ROOT,
             check=True,
             stdout=subprocess.PIPE,
@@ -190,7 +188,7 @@ class SP1BuildAcceptanceTests(unittest.TestCase):
         self.assertTrue(feature["raw_transcript_id"].startswith("ENST"))
         self.assertTrue(feature["raw_peptide_id"].startswith("ENSP"))
         self.assertTrue(feature["database_name"])
-        self.assertIn(feature["source"], {"interpro", "pfam", "mobidblite", "elm"})
+        self.assertIn(feature["source"], FEATURE_SOURCES)
 
 
 if __name__ == "__main__":

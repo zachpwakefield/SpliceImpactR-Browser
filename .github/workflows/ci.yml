@@ -39,6 +39,24 @@ jobs:
       - name: Frontend tests
         working-directory: frontend
         run: pnpm test
+      - name: TypeScript checks
+        working-directory: frontend
+        run: pnpm run typecheck
       - name: Production build
         working-directory: frontend
         run: pnpm run build
+
+  r-annotation-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.6"
+          use-public-rspm: true
+      - name: Install released Bioconductor dependencies
+        run: ./scripts/install_spliceimpactr.sh
+      - name: Complete-annotation and public-package integration test
+        run: Rscript --vanilla tests/r/test_browser_annotation.R
+      - name: R exporter preflight tests
+        run: python3 -m unittest tests.data.test_r_preflight -v

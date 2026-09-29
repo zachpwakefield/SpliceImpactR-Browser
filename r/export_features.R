@@ -10,10 +10,9 @@ if (length(script_argument) != 1L) {
 }
 script_path <- normalizePath(sub("^--file=", "", script_argument[[1L]]), mustWork = TRUE)
 script_directory <- dirname(script_path)
-dependency_lock <- file.path(script_directory, "dependencies.lock.tsv")
-renv_lock <- file.path(script_directory, "renv.lock")
+dependency_requirements <- file.path(script_directory, "requirements.tsv")
 source(file.path(script_directory, "preflight.R"), local = TRUE)
-dependency_versions <- run_dependency_preflight(dependency_lock, renv_lock)
+dependency_versions <- run_dependency_preflight(dependency_requirements)
 
 suppressPackageStartupMessages(library(data.table))
 suppressPackageStartupMessages(library(jsonlite))
@@ -94,9 +93,8 @@ write_json(
   list(
     exporter = "R/data.table",
     r_version = R.version.string,
-    supported_r_version = SUPPORTED_R_VERSION,
-    dependency_lock = basename(dependency_lock),
-    renv_lock = basename(renv_lock),
+    minimum_r_version = MINIMUM_R_VERSION,
+    dependency_requirements = basename(dependency_requirements),
     data_table_version = unname(dependency_versions[["data.table"]]),
     jsonlite_version = unname(dependency_versions[["jsonlite"]]),
     dependencies = as.list(dependency_versions),

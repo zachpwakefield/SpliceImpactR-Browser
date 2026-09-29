@@ -637,7 +637,7 @@ Expected behavior:
 - The server never scans arbitrary filesystem paths exposed by request parameters.
 - A lock prevents two annotation builds from overwriting each other.
 - Python and npm dependencies are locked in uv.lock/requirements and package-lock.json.
-- The R/data.table export step has an explicit supported R version, preflight check, and renv.lock. R is required only for the one-time annotation build, not for serving or using the completed browser.
+- The R/data.table export step has explicit supported R/dependency minimums and a preflight check. Actual preparation/export versions are recorded. R is required only for annotation preparation/build, not for serving or using the completed browser.
 - Docker may be provided as an optional reproducibility path, not the primary user experience.
 
 Proposed output package:

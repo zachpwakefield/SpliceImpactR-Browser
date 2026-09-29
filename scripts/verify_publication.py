@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 import sys
+import subprocess
 from pathlib import Path
 
 
@@ -23,11 +24,28 @@ GENERATED_SUFFIXES = (".sqlite", ".sqlite-shm", ".sqlite-wal", ".fa", ".fai", ".
 
 
 def iter_files() -> list[Path]:
+    # Audit what a public Git checkout can contain. Ignored runtime data and
+    # dependencies are allowed locally; accidentally tracked/staged copies are
+    # still audited and rejected below.
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+        )
+    except FileNotFoundError:
+        result = None
+    if result is not None and result.returncode == 0:
+        return sorted({ROOT / item.decode("utf-8") for item in result.stdout.split(b"\0") if item and (ROOT / item.decode("utf-8")).is_file()})
     files: list[Path] = []
     for path in ROOT.rglob("*"):
         if not path.is_file():
             continue
         if any(part in SKIP_DIRS for part in path.relative_to(ROOT).parts):
+            continue
+        relative = path.relative_to(ROOT).as_posix()
+        if relative.startswith(("data/cache/", "data/reference/", "data/spliceimpactr-cache/", "frontend/dist/", "desktop_app/dist/", "output/", "tmp/")):
+            continue
+        if relative.startswith("data/builds/") and relative != "data/builds/README.md":
             continue
         files.append(path)
     return files
@@ -69,7 +87,7 @@ def main() -> int:
         for item in sorted(set(failures)):
             print(f"- {item}", file=sys.stderr)
         return 1
-    print("Publication audit passed: no private paths, credentials, or generated local artifacts found.")
+    print("Publication audit passed: publishable files contain no private paths, credentials, or generated local artifacts.")
     return 0
 
 

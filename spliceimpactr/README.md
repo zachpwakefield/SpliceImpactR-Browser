@@ -20,4 +20,11 @@ Rscript scripts/prepare_spliceimpactr_cache.R \
   --base-dir data/spliceimpactr-cache
 ```
 
-That adapter obtains GENCODE v45 annotation/sequences, queries Ensembl 111 and ELM through SpliceImpactR, writes the seven normalized source RDS files, and derives optional exon-level projections. The browser does not import SpliceImpactR at runtime; it consumes those prepared files after the Python builder validates them.
+The adapter obtains unmodified GENCODE v45 annotation/sequences and queries
+the explicit Ensembl 111 archive without TSL/biotype selectors. Public biomaRt
+APIs avoid broken automatic archive discovery; SpliceImpactR's public
+`get_manual_features()` processes the query results and `get_exon_features()`
+provides the optional exon audit. ELM instances are sequence-confirmed. No
+private package calls or vendored source are used. The browser does not import
+SpliceImpactR at runtime; it consumes the prepared files after builder
+validation. See the main README for feature-coverage/provenance limitations.

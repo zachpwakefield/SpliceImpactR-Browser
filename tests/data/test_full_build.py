@@ -7,7 +7,8 @@ from pathlib import Path
 
 from backend.builder.constants import (
     DENSITY_TILE_SIZES,
-    EXPECTED_FEATURE_AUDIT,
+    ANNOTATION_POLICY,
+    FEATURE_SOURCES,
     EXPECTED_GTF_FEATURE_ROWS,
     EXPECTED_GTF_TOTAL_ROWS,
     EXPECTED_PC_TRANSCRIPT_FASTA_RECORDS,
@@ -61,7 +62,11 @@ class FullBuildAcceptanceTests(unittest.TestCase):
         )
         self.assertEqual(self.report["features"]["orphan_row_count"], 0)
         self.assertEqual(self.report["features"]["invalid_row_count"], 0)
-        for source, (rows, distinct_transcripts, distinct_features) in EXPECTED_FEATURE_AUDIT.items():
+        preparation = self.report["feature_preparation"]
+        self.assertEqual(preparation["annotation_policy"], ANNOTATION_POLICY)
+        self.assertEqual(preparation["annotation_inventory"]["transcripts"], EXPECTED_GTF_FEATURE_ROWS["transcript"])
+        for source in FEATURE_SOURCES:
+            receipt = preparation["feature_sources"][source]
             exported = self.report["feature_export"]["sources"][source]
             self.assertEqual(
                 (
@@ -69,8 +74,14 @@ class FullBuildAcceptanceTests(unittest.TestCase):
                     exported["distinct_transcripts"],
                     exported["distinct_feature_ids"],
                 ),
-                (rows, distinct_transcripts, distinct_features),
+                (receipt["rows"], receipt["distinct_transcripts"], receipt["distinct_feature_ids"]),
             )
+
+    def test_pgk1_retains_lower_support_and_unscored_models(self) -> None:
+        rows = self.connection.execute("SELECT tsl FROM transcript JOIN gene USING(gene_id) WHERE gene.symbol='PGK1'").fetchall()
+        self.assertEqual(len(rows), 6)
+        self.assertTrue(any(row["tsl"] == "5" for row in rows))
+        self.assertTrue(any(row["tsl"] is None for row in rows))
 
     def test_database_counts_and_density_are_complete(self) -> None:
         self.assertEqual(self.manifest["counts"]["gene"], EXPECTED_GTF_FEATURE_ROWS["gene"])
@@ -142,7 +153,15 @@ class FullBuildAcceptanceTests(unittest.TestCase):
         index = BUILD_DIR / reference["fai_public_path"]
         self.assertTrue(fasta.is_symlink())
         self.assertTrue(index.is_symlink())
-        self.assertLess(sum(path.lstat().st_size for path in BUILD_DIR.rglob("*")), 3_000_000_000)
+        # The complete, unfiltered feature catalog can legitimately enlarge
+        # SQLite beyond the old filtered-cache size. Test for a copied genome,
+        # not for one workstation's historical total package size.
+        non_database_bytes = sum(
+            path.lstat().st_size
+            for path in BUILD_DIR.rglob("*")
+            if path.name != "annotation.sqlite"
+        )
+        self.assertLess(non_database_bytes, 50_000_000)
 
 
 if __name__ == "__main__":

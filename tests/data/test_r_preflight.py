@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import json
 import os
 import shutil
@@ -11,10 +10,9 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LOCK_PATH = PROJECT_ROOT / "r" / "dependencies.lock.tsv"
-RENV_LOCK_PATH = PROJECT_ROOT / "r" / "renv.lock"
-PREFLIGHT_PATH = PROJECT_ROOT / "r" / "preflight.R"
-EXPORTER_PATH = PROJECT_ROOT / "r" / "export_features.R"
+REQUIREMENTS = PROJECT_ROOT / "r" / "requirements.tsv"
+PREFLIGHT = PROJECT_ROOT / "r" / "preflight.R"
+EXPORTER = PROJECT_ROOT / "r" / "export_features.R"
 
 
 class RDependencyPreflightTests(unittest.TestCase):
@@ -23,134 +21,61 @@ class RDependencyPreflightTests(unittest.TestCase):
         cls.rscript = shutil.which("Rscript")
         if cls.rscript is None:
             raise unittest.SkipTest("Rscript is unavailable")
+        available = subprocess.run([cls.rscript, "--vanilla", "-e",
+            "quit(status=if (all(vapply(c('data.table','jsonlite'), requireNamespace, logical(1), quietly=TRUE))) 0 else 1)"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if available.returncode:
+            raise unittest.SkipTest("R exporter dependencies are unavailable; the R CI job installs them")
 
-    def _run_preflight(self, lock_path: Path) -> subprocess.CompletedProcess[str]:
-        expression = (
-            "source(commandArgs(trailingOnly=TRUE)[1]); "
-            "versions <- run_dependency_preflight(commandArgs(trailingOnly=TRUE)[2]); "
-            "cat(paste(names(versions), versions, sep='=', collapse='\\n'))"
-        )
-        return subprocess.run(
-            [
-                self.rscript,
-                "-e",
-                expression,
-                str(PREFLIGHT_PATH),
-                str(lock_path),
-            ],
-            cwd=PROJECT_ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+    def run_r(self, expression: str, *arguments: Path | str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([self.rscript, "--vanilla", "-e", expression, *(str(value) for value in arguments)],
+            cwd=PROJECT_ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
 
-    def test_committed_lock_pins_validated_versions(self) -> None:
-        with LOCK_PATH.open(newline="", encoding="utf-8") as handle:
-            rows = {row["package"]: row["version"] for row in csv.DictReader(handle, delimiter="\t")}
-        self.assertEqual(
-            rows,
-            {"data.table": "1.18.2.1", "jsonlite": "2.0.0"},
-        )
-        result = self._run_preflight(LOCK_PATH)
+    def test_supported_runtime_and_actual_dependency_versions_are_recorded(self) -> None:
+        result = self.run_r(
+            "source(commandArgs(TRUE)[1]); versions <- run_dependency_preflight(commandArgs(TRUE)[2]); "
+            "cat(jsonlite::toJSON(as.list(versions), auto_unbox=TRUE))", PREFLIGHT, REQUIREMENTS)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            result.stdout.strip().splitlines(),
-            ["data.table=1.18.2.1", "jsonlite=2.0.0"],
-        )
+        versions = json.loads(result.stdout)
+        self.assertEqual(set(versions), {"data.table", "jsonlite"})
+        self.assertTrue(all(isinstance(version, str) for version in versions.values()))
 
-    def test_supported_r_release_and_renv_lock_are_enforced(self) -> None:
-        expression = (
-            "source(commandArgs(trailingOnly=TRUE)[1]); "
-            "versions <- run_dependency_preflight(commandArgs(trailingOnly=TRUE)[2], "
-            "commandArgs(trailingOnly=TRUE)[3]); "
-            "cat(as.character(getRversion()))"
-        )
-        result = subprocess.run(
-            [
-                self.rscript,
-                "-e",
-                expression,
-                str(PREFLIGHT_PATH),
-                str(LOCK_PATH),
-                str(RENV_LOCK_PATH),
-            ],
-            cwd=PROJECT_ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
+    def test_current_bioconductor_r_release_is_not_rejected_by_an_old_patch_pin(self) -> None:
+        result = self.run_r(
+            "source(commandArgs(TRUE)[1]); stopifnot(assert_supported_r_version('4.6.0') == '4.6.0'); "
+            "stopifnot(assert_supported_r_version('4.6.1') == '4.6.1'); "
+            "tryCatch({assert_supported_r_version('4.4.9'); quit(status=2)}, "
+            "error=function(e) cat(conditionMessage(e)))", PREFLIGHT)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "4.5.2")
+        self.assertIn("need R >= 4.5.0", result.stdout)
 
-    def test_mismatch_fails_with_actionable_message(self) -> None:
+    def test_old_or_missing_dependency_fails_with_actionable_message(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            mismatched_lock = Path(directory) / "dependencies.lock.tsv"
-            mismatched_lock.write_text(
-                "package\tversion\n"
-                "data.table\t0.0.0-test-mismatch\n"
-                "jsonlite\t2.0.0\n",
-                encoding="utf-8",
-            )
-            result = self._run_preflight(mismatched_lock)
+            requirements = Path(directory) / "requirements.tsv"
+            requirements.write_text("package\tminimum_version\ndata.table\t999.0.0\njsonlite\t1.8.0\n", encoding="utf-8")
+            result = self.run_r("source(commandArgs(TRUE)[1]); run_dependency_preflight(commandArgs(TRUE)[2])", PREFLIGHT, requirements)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn(
-            "data.table: expected 0.0.0-test-mismatch; found 1.18.2.1",
-            result.stderr,
-        )
-        self.assertIn("renv::install", result.stderr)
-        self.assertIn("data.table@0.0.0-test-mismatch", result.stderr)
-        self.assertIn("jsonlite@2.0.0", result.stderr)
+        self.assertIn("data.table: need >= 999.0.0; found", result.stderr)
+        self.assertIn("install_spliceimpactr.sh", result.stderr)
 
-    def test_export_manifest_records_both_verified_versions(self) -> None:
+    def test_export_manifest_records_actual_versions(self) -> None:
         configured_cache = os.environ.get("TRANSCRIPT_BROWSER_TEST_CACHE")
         if not configured_cache:
-            self.skipTest("Set TRANSCRIPT_BROWSER_TEST_CACHE to run the local-cache export test")
-        cache = Path(configured_cache).expanduser()
-        if not cache.is_dir():
-            self.skipTest("Audited local feature cache is unavailable")
+            self.skipTest("Set TRANSCRIPT_BROWSER_TEST_CACHE to test an actual RDS export")
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
-            transcript_ids = temporary / "transcripts.txt"
-            transcript_ids.write_text(
-                "ENST00000327443\n"
-                "ENST00000426431\n"
-                "ENST00000548560\n"
-                "ENST00000551969\n",
-                encoding="ascii",
-            )
+            identifiers = temporary / "transcripts.txt"
+            identifiers.write_text("ENST00000327443\nENST00000426431\nENST00000548560\nENST00000551969\n", encoding="ascii")
             output = temporary / "features"
-            result = subprocess.run(
-                [
-                    self.rscript,
-                    str(EXPORTER_PATH),
-                    "--input",
-                    str(cache),
-                    "--output",
-                    str(output),
-                    "--transcripts",
-                    str(transcript_ids),
-                ],
-                cwd=PROJECT_ROOT,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
+            result = subprocess.run([self.rscript, "--vanilla", str(EXPORTER), "--input", configured_cache,
+                "--output", str(output), "--transcripts", str(identifiers)], cwd=PROJECT_ROOT,
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
             self.assertEqual(result.returncode, 0, result.stderr)
-            manifest = json.loads(
-                (output / "feature_export_manifest.json").read_text(encoding="utf-8")
-            )
-        self.assertEqual(manifest["dependency_lock"], "dependencies.lock.tsv")
-        self.assertEqual(manifest["renv_lock"], "renv.lock")
-        self.assertEqual(manifest["supported_r_version"], "4.5.2")
-        self.assertEqual(manifest["data_table_version"], "1.18.2.1")
-        self.assertEqual(manifest["jsonlite_version"], "2.0.0")
-        self.assertEqual(
-            manifest["dependencies"],
-            {"data.table": "1.18.2.1", "jsonlite": "2.0.0"},
-        )
+            manifest = json.loads((output / "feature_export_manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["dependency_requirements"], "requirements.tsv")
+        self.assertEqual(manifest["minimum_r_version"], "4.5.0")
+        self.assertEqual(manifest["dependencies"]["data.table"], manifest["data_table_version"])
+        self.assertEqual(manifest["dependencies"]["jsonlite"], manifest["jsonlite_version"])
 
 
 if __name__ == "__main__":

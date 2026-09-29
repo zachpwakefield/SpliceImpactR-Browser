@@ -14,19 +14,35 @@ selects the compatible package repository for the R version in use. The
 adapter records the installed SpliceImpactR and Bioconductor versions in its
 relative-path preparation manifest.
 
-The small standalone R export/preflight helper remains pinned to R 4.5.2 with
-the exact package versions in both `renv.lock` and `dependencies.lock.tsv`:
+`library_setup.R` ensures non-interactive installation has a writable library,
+creating R's configured personal library when necessary. Use the same
+`R_LIBS_USER` setting for installation, preparation, and export/build commands
+when an isolated library is selected.
 
-- data.table 1.18.2.1
-- jsonlite 2.0.0
+`browser_annotation.R` reads every model in the raw GTF with public
+`rtracklayer`/`Biostrings` APIs. It keeps TSL 1–5 and unscored values, all biotypes,
+and incomplete CDS models. This bypasses the filtering in the package's
+analysis-oriented `get_annotation()` without calling private package functions.
+`archive_features.R` queries the explicit Ensembl 111 archive with public
+biomaRt APIs, verifies its registry release, and applies no TSL/biotype query
+selector. It uses the documented `Mart` connection class to avoid broken
+automatic archive discovery and processes results with the released
+SpliceImpactR public `get_manual_features()` API. No private APIs or namespace
+patches are used. ELM instances are mapped/sequence-confirmed; the optional
+exon audit uses public `get_exon_features()`. Source-specific coverage and the
+upstream bounding-label limitation are documented in the main README.
 
-`preflight.R` fails before GTF ingestion if the R release, installed package
-versions, TSV lock, and renv lock disagree. On a machine that needs the pinned
-packages installed, restore them once with:
+`preflight.R` checks the exporter minimums in `requirements.tsv` (R >=4.5,
+data.table >=1.14, jsonlite >=1.8). The recommended R 4.6 installation satisfies
+this contract; no second R version or obsolete exact patch pin is required.
+Actual package versions are recorded in preparation/export manifests. The
+builder checks source integrity, complete model inventory, source counts, and
+scientific geometry independently of RDS serialization bytes.
 
-```r
-if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv")
-renv::restore(lockfile = "r/renv.lock", prompt = FALSE)
+Run the offline synthetic/public-API integration test with:
+
+```bash
+Rscript --vanilla tests/r/test_browser_annotation.R
 ```
 
 Dependency acquisition may require a network connection. Once those packages

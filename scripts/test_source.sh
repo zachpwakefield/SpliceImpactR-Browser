@@ -10,18 +10,21 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 PYTHON_BIN="${PYTHON:-python3}"
 VENV_PYTHON="${VENV_PYTHON:-$ROOT/.venv/bin/python}"
 REQUIRE_FRONTEND=0
+REQUIRE_ALL=0
 
 for argument in "$@"; do
   case "$argument" in
     --require-frontend) REQUIRE_FRONTEND=1 ;;
+    --require-all) REQUIRE_FRONTEND=1; REQUIRE_ALL=1 ;;
     -h|--help)
       cat <<'USAGE'
-Usage: ./scripts/test_source.sh [--require-frontend]
+Usage: ./scripts/test_source.sh [--require-frontend | --require-all]
 
 Runs source/privacy checks, builder/data-contract tests, and (when available)
 the installed backend and frontend test suites.  It does not build annotation
 data and it does not install packages.  Use --require-frontend to fail when
 frontend dependencies have not already been installed.
+Use --require-all to require backend, frontend, and released R dependencies.
 USAGE
       exit 0
       ;;
@@ -52,6 +55,10 @@ if [[ -x "$VENV_PYTHON" ]] && "$VENV_PYTHON" -c 'import fastapi, httpx, pydantic
   PYTHONPATH="$ROOT" "$VENV_PYTHON" -B -m unittest discover \
     -s backend/tests -p 'test_*.py' -v
 else
+  if [[ "$REQUIRE_ALL" -eq 1 ]]; then
+    echo "ERROR: backend dependencies are missing; install requirements.lock in .venv" >&2
+    exit 1
+  fi
   echo "SKIP: backend dependencies are not installed at $VENV_PYTHON"
   echo "      Run ./run_local.sh once, or install requirements.lock in a venv."
 fi
@@ -75,11 +82,23 @@ fi
 
 if command -v Rscript >/dev/null 2>&1; then
   Rscript --vanilla -e \
-    'parse(file="r/export_features.R"); parse(file="r/preflight.R"); parse(file="scripts/prepare_spliceimpactr_cache.R")' \
+    'parse(file="r/export_features.R"); parse(file="r/preflight.R"); parse(file="r/browser_annotation.R"); parse(file="r/archive_features.R"); parse(file="r/library_setup.R"); parse(file="scripts/prepare_spliceimpactr_cache.R")' \
     >/dev/null
   echo "R source parse passed."
+  if Rscript --vanilla -e 'quit(status=if(all(vapply(c("SpliceImpactR","data.table","jsonlite","digest","rtracklayer","Biostrings"), requireNamespace, logical(1), quietly=TRUE))) 0 else 1)' >/dev/null 2>&1; then
+    Rscript --vanilla tests/r/test_browser_annotation.R
+  elif [[ "$REQUIRE_ALL" -eq 1 ]]; then
+    echo "ERROR: R dependencies missing; run ./scripts/install_spliceimpactr.sh" >&2
+    exit 1
+  else
+    echo "SKIP: complete-annotation R integration test requires installed Bioconductor dependencies."
+  fi
 else
+  if [[ "$REQUIRE_ALL" -eq 1 ]]; then
+    echo "ERROR: Rscript missing; install R and the released Bioconductor dependencies" >&2
+    exit 1
+  fi
   echo "SKIP: Rscript is not installed (R checks run in the R-enabled CI job)."
 fi
 
-echo "Source test suite passed.  A generated-data/API/UI smoke test is described in docs/testing.md."
+echo "Available source checks passed (review any SKIP lines). This does not prove a full data build or UI acceptance. See docs/testing.md."

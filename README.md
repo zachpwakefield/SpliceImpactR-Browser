@@ -64,13 +64,50 @@ The following commands create a complete local build. Run them from a fresh clon
 
 ### Requirements
 
-- Python 3.9+ for the API and builder (the lock file is tested across the supported Python range).
+- Python 3.9+ for the API and builder (the isolated setup check uses Python 3.9; source CI uses Python 3.11).
 - Node.js 22.13+ and pnpm 11.7+ for the production frontend.
-- R and Bioconductor for the [SpliceImpactR package](https://bioconductor.org/packages/release/bioc/html/SpliceImpactR.html); the current Bioconductor release is designed for R 4.6, and the package is needed only during data preparation.
+- R 4.6+ and the compatible Bioconductor release for [SpliceImpactR](https://bioconductor.org/packages/release/bioc/html/SpliceImpactR.html) (released package >=1.0.0). The same R installation reads RDS files during the build; R is not used while browsing.
 - Network access during preparation only. Runtime browsing is local/offline.
 
+Use macOS or Linux; on Windows, use WSL2 (the builder uses Unix file locks).
+Install Python from [python.org](https://www.python.org/downloads/), Node from
+[nodejs.org](https://nodejs.org/en/download), and R from
+[CRAN](https://cran.r-project.org/). Linux source installations of Bioconductor
+may need compiler and system-library development packages; resolve dependency
+errors before preparing data. A Conda environment is optional, not required.
+
+If R is installed from Conda/source rather than the native macOS installer,
+ensure its compiler toolchain and CMake are available for source dependencies
+such as `nloptr`. A failed install must be retried after fixing that prerequisite;
+the setup never treats a missing SpliceImpactR package as success.
+
+The simplest first setup is:
+
 ```bash
-git clone <your-repository-url> transcript-browser
+git clone https://github.com/zachpwakefield/transcript-browser-shareable.git
+cd transcript-browser-shareable
+./scripts/setup_local.sh
+```
+
+This installs dependencies in the project Python environment and active R
+library, builds the frontend, downloads annotation/features, validates a full
+database, and starts the server. If pnpm is absent, it uses a pinned pnpm via
+`npx` without a global installation. Add `--no-start` to build without launching.
+No `samtools` or whole-genome FASTA is needed. First preparation can be lengthy;
+keep the cache and rerun the same command after an interrupted download/query.
+Do not confuse successful source-only tests with a successful full setup.
+The validated unfiltered SQLite database is about 3.33 GB, in addition to
+dependencies and caches. Rebuilding temporarily needs room for both the old
+and new database.
+If no existing R package library is writable, the installer creates R's
+configured personal library. Set `R_LIBS_USER` before setup to choose an
+isolated library; subsequent preparation/build commands must use the same
+setting. Administrator privileges are not needed for package installation.
+
+For separate, inspectable steps:
+
+```bash
+git clone https://github.com/zachpwakefield/transcript-browser-shareable.git transcript-browser
 cd transcript-browser
 
 # Python runtime for the local API and builder helpers.
@@ -87,14 +124,14 @@ cd ..
 ./scripts/install_spliceimpactr.sh
 
 # Download/process GENCODE v45 and obtain the seven protein-feature sources.
-Rscript scripts/prepare_spliceimpactr_cache.R \
+Rscript --vanilla scripts/prepare_spliceimpactr_cache.R \
   --output data/cache \
-  --base-dir data/spliceimpactr-cache
+  --base-dir data/spliceimpactr-cache --skip-exon
 
 # Build and validate the immutable SQLite package. A whole-genome reference
 # is optional; transcript, sequence, and protein-feature browsing works without
 # it. See docs/reference_setup.md only if byte-range reference serving is wanted.
-./scripts/build_annotations.sh data/cache --scope full
+PYTHON=.venv/bin/python ./scripts/build_annotations.sh data/cache --scope full
 
 # Start the local browser.
 ./run_local.sh
@@ -102,17 +139,21 @@ Rscript scripts/prepare_spliceimpactr_cache.R \
 
 Open the printed `http://127.0.0.1:<port>` URL. The server binds to loopback only. The optional macOS launcher is documented in [`desktop_app/README.md`](desktop_app/README.md).
 
-The preparation step is the only normal step that contacts GENCODE, Ensembl BioMart, or ELM. It can be repeated safely: existing feature outputs are reused unless `--force` is supplied. The browser itself does not download annotation data at runtime.
+Dependency installation and data preparation require network access. Feature
+outputs are reused only when their input signature and file digest match;
+`--force` refreshes queries deliberately. Old filtered/unreceipted outputs are
+regenerated. The browser does not download annotation data at runtime.
 
 ## How SpliceImpactR feeds the browser
 
 The data flow is deliberately explicit:
 
 ```text
-SpliceImpactR (Bioconductor release)
-  ├─ GENCODE v45 GTF + transcript FASTA + protein FASTA
-  ├─ Ensembl 111 BioMart features
-  └─ ELM linear motifs
+Unmodified GENCODE v45 GTF + transcript/protein FASTA
+  └─ complete-model adapter (no annotation filters)
+          + SpliceImpactR (released Bioconductor package)
+              ├─ Ensembl 111 BioMart protein features
+              └─ ELM linear motifs
           │
           ▼
 data/cache/*.rds + raw GENCODE .gz files
@@ -127,7 +168,46 @@ validated immutable data/builds/gencode_v45/annotation.sqlite
 loopback API + React/Canvas browser
 ```
 
-`scripts/prepare_spliceimpactr_cache.R` calls SpliceImpactR's public `get_annotation()` and `get_protein_features()` APIs and uses BiocFileCache's public path lookup to locate downloaded raw assets. It writes one normalized RDS table per source, derives an optional `exon_features.rds` audit table with `get_exon_features()`, and writes a relative-path-only `spliceimpactr_manifest.json` containing the installed package and Bioconductor versions. The adapter does not call SpliceImpactR private functions.
+`scripts/prepare_spliceimpactr_cache.R` downloads official raw assets through
+BiocFileCache and reads the complete GTF with public `rtracklayer` readers. Its
+release-pinned adapter queries the Ensembl 111 BioMart through public `biomaRt`
+APIs and processes the results with SpliceImpactR's public `get_manual_features()`
+API; ELM instances are matched to the supplied protein sequences. It deliberately does **not**
+call `get_annotation()`: that analysis-oriented API defaults to TSL 1–3 and
+excludes incomplete CDS models, and its TSL options do not provide an unscored
+transcript mode. No private package functions or package source are vendored.
+
+The browser preserves **all 252,930 transcript models and 63,187 genes** in the
+pinned GTF, including TSL 4/5, unscored transcripts, every biotype, and incomplete
+CDS tags. TSL and annotation flags are metadata, not import filters. Dense-locus
+rendering is bounded/virtualized for speed; that does not delete transcripts
+from the searchable catalog.
+
+Feature coverage is a separate question. SpliceImpactR 1.0.0's own remote helper
+uses a `protein_coding` query and automatic archive discovery. The browser's
+public-API adapter avoids those restrictions: it uses the verified
+[Ensembl 111 archive](https://jan2024.archive.ensembl.org) and no TSL/biotype
+selector. ELM still requires a mapped, sequence-confirmed instance. A missing protein sequence, unavailable feature, or
+non-exact CDS mapping does not remove its transcript model. Partial mappings
+remain labeled and are not drawn as exact genomic feature projections.
+
+This compatibility path avoids dependence on the current Ensembl website's
+archive-list discovery. It does not patch installed packages or switch to
+another annotation release. SpliceImpactR still provides feature normalization
+and the optional exon audit. Its 1.0.0 manual-feature bounding labels have a
+minus-strand defect, so those labels are omitted; exact genomic geometry comes
+only from the independently verified raw-GTF builder.
+
+In GENCODE v45, PGK1 has six source transcripts, including a TSL 5 and an unscored
+model. A current Ensembl page showing more PGK1 isoforms is a different annotation
+catalog/release—not a reason to synthesize missing v45 models. Upgrading the
+catalog requires a coordinated release-contract change.
+
+Preparation writes one normalized RDS per source, optional exon-level audit
+data, and a relative-path manifest with complete transcript inventory, policy,
+versions, counts, and digests. Raw release MD5s are pinned; generated feature
+counts/digests describe the actual fresh preparation instead of one computer's
+old RDS serialization. Changing features changes the build identity.
 
 ### Release pairing
 
@@ -164,13 +244,7 @@ Rscript scripts/prepare_spliceimpactr_cache.R \
   --force
 ```
 
-Use all transcript-support-level values only when intentionally re-auditing feature counts:
-
-```bash
-Rscript scripts/prepare_spliceimpactr_cache.R \
-  --output data/cache \
-  --filter-tsl 1,2,3,4,5
-```
+There is no `--filter-tsl` option: browser annotation is always unfiltered.
 
 If GENCODE assets already exist, provide all three raw files to avoid another download:
 
@@ -203,6 +277,7 @@ data/cache/
 ├── signalp.rds
 ├── mobidblite.rds
 ├── elm.rds
+├── *.receipt.json                # per-source verified resume receipts
 ├── exon_features.rds              # optional provenance output
 └── spliceimpactr_manifest.json    # preparation provenance
 ```
@@ -284,10 +359,12 @@ pnpm run build
 cd ..
 ```
 
-The included [GitHub Actions workflow](.github/workflows/ci.yml) repeats the publication audit, backend tests, frontend tests, and production build on pushes and pull requests. The full release gate additionally requires a prepared full database, deterministic rebuild receipt, offline audit, cross-browser interaction review, fresh-environment replay, and domain-scientist interpretation review.
+The included [GitHub Actions workflow](.github/workflows/ci.yml) repeats the publication audit, backend tests, frontend tests, TypeScript checks, production build, and a released-package R adapter integration test on pushes and pull requests. Use `./scripts/test_source.sh --require-all` after installing dependencies to make missing test environments fail rather than skip. The full release gate additionally requires a prepared full database, deterministic rebuild receipt, offline audit, cross-browser interaction review, fresh-environment replay, and domain-scientist interpretation review.
 
 For the staged SP1 build, live API smoke test, manual genome-browser checklist,
-and full release gate, see [`docs/testing.md`](docs/testing.md).
+and full release gate, see [`docs/testing.md`](docs/testing.md). The latest
+isolated local setup evidence and its remaining review boundaries are in
+[`docs/setup_validation.md`](docs/setup_validation.md).
 
 After each module or larger section, review both success and failure paths: missing inputs, stale builds, coordinate mismatches, empty versus failed feature results, ambiguous identifiers, oversized requests, focus/scroll ownership, external-resource leaks, and accidental local-path disclosure. Keep automated, manual browser, and biological interpretation evidence separate. See [`docs/critical_review_addendum.md`](docs/critical_review_addendum.md).
 
@@ -302,7 +379,7 @@ backend/app/                 read-only API, validation, PDF/report endpoints
 backend/builder/             streaming GTF/FASTA/RDS → SQLite builder
 frontend/src/                React controls, Canvas genome view, inspectors
 frontend/tests/              frontend behavior and interaction contracts
-r/                           locked R preflight/export helpers
+r/                           complete-model adapter, R preflight/export helpers
 scripts/                     data preparation, build, audit, benchmark helpers
 spliceimpactr/README.md       Bioconductor dependency notes
 docs/                        data, architecture, coordinate, review, and release docs
@@ -314,8 +391,10 @@ data/builds/                 generated local builds only; ignored by Git
 ## Troubleshooting
 
 - **SpliceImpactR will not install:** use the R/Bioconductor release listed on its [Bioconductor package page](https://bioconductor.org/packages/release/bioc/html/SpliceImpactR.html), then rerun `./scripts/install_spliceimpactr.sh`. The browser does not need SpliceImpactR at runtime.
-- **The adapter says a source is missing:** provide all three raw GENCODE paths together, or remove a partially prepared output and rerun without `--skip-exon`.
-- **A feature checksum or count fails:** keep the GENCODE/Ensembl pairing and `--filter-tsl` setting consistent. Do not edit the builder manifest by hand.
+- **The adapter says a source is missing:** provide all three raw GENCODE paths together, or rerun preparation to resume. `--skip-exon` omits only an optional audit table, not any transcript or protein source.
+- **A feature checksum or count fails:** rerun preparation, using `--force` if outputs were modified; keep GENCODE v45 paired with Ensembl 111. Do not edit the manifest by hand.
+- **An old preparation manifest is rejected:** rerun preparation to replace legacy filtered outputs with complete-model inputs and v2 receipts.
+- **A remote query fails:** retry the same preparation command; completed, verified sources are retained. Do not switch to a current Ensembl release or publish an empty failed query as a substitute.
 - **Optional reference verification fails:** follow [`docs/reference_setup.md`](docs/reference_setup.md) and regenerate the index with the same FASTA bytes, or omit the optional reference for transcript/protein-only browsing.
 - **Normal startup refuses the package:** rebuild with `scripts/build_annotations.sh data/cache --scope full`; normal mode requires a full validated annotation build, but not a whole-genome reference.
 - **A 26th protein row will not open:** simultaneous expansion is intentionally capped at 25. Collapse a row before opening another.

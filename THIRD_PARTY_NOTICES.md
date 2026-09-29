@@ -1,6 +1,9 @@
 # Third-party notices and data attribution
 
-Versions below are the installed, locked dependencies used to build and run this release. SPDX identifiers are used where available; upstream license files remain in the installed Python and pnpm package metadata.
+Python/frontend versions below are locked runtime/build dependencies. R entries
+describe compatible dependencies; actual R/package versions are recorded per
+preparation. SPDX identifiers are used where available; upstream license files
+remain in installed package metadata.
 
 ## Scientific data
 
@@ -34,10 +37,18 @@ Versions below are the installed, locked dependencies used to build and run this
 
 | Package | Version | License |
 |---|---:|---|
-| data.table | 1.18.2.1 | MPL-2.0 |
-| jsonlite | 2.0.0 | MIT |
+| data.table | >=1.14.0 | MPL-2.0 |
+| jsonlite | >=1.8.0 | MIT |
+| digest | installed CRAN version | GPL-2 OR GPL-3 |
+| rtracklayer | installed Bioconductor version | Artistic-2.0 |
+| Biostrings | installed Bioconductor version | Artistic-2.0 |
+| BiocFileCache | installed Bioconductor version | Artistic-2.0 |
 
-The browser's small R build preflight/export layer uses only the pinned `data.table` and `jsonlite` versions above; its supported R release and dependency records are in `r/renv.lock`. Data preparation additionally installs SpliceImpactR and its declared imports from Bioconductor through `BiocManager`.
+The R build preflight/export layer uses the minimums in `r/requirements.tsv`
+and records actual installed versions. Data preparation additionally installs
+SpliceImpactR and its declared imports through `BiocManager`, reads complete
+source models with public Bioconductor readers, and uses `digest` for integrity
+receipts. Check installed package metadata for full transitive license notices.
 
 ## SpliceImpactR Bioconductor dependency
 
