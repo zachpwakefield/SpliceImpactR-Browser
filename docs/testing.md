@@ -44,13 +44,44 @@ cd ..
 and runs `tests/r/test_browser_annotation.R`. The latter independently checks
 all TSLs, unscored values, other biotypes, incomplete CDS, PAR_Y IDs, both-strand
 split codons, and the released package's public manual-feature/exon APIs using
-synthetic data. It does not download a scientific fixture. `--require-frontend`
+synthetic data. It also exercises all three dataset profiles, release/species/
+assembly mismatches, original feature bounds, distinct coincident accessions,
+valid-empty versus unavailable sources, cache reuse and mocked public accession.
+It does not download a scientific fixture. `--require-frontend`
 remains available when only that dependency must be mandatory.
 
 The GitHub Actions workflow repeats source tests, packaging-helper fixtures,
 and an R adapter integration test on clean runners. It also compiles/ad-hoc
 signs the native Mac launcher. CI does not download the full scientific catalog
 or claim a native generated-data installation.
+
+## Dataset-specific checks
+
+Use `--dataset` throughout preparation/build/runtime. The three reviewed IDs,
+raw inputs and cache directories are in [genome_datasets.md](genome_datasets.md).
+Source tests prove contracts, not full v50/M39 installation.
+
+For an optional real release-backed **single-gene** feature-query checkpoint:
+
+```bash
+Rscript --vanilla tests/r/test_dataset_release_smoke.R \
+  --dataset human-gencode-v50 --gene PGK1 \
+  --gtf /path/to/gencode.v50.annotation.gtf.gz \
+  --protein-fa /path/to/gencode.v50.pc_translations.fa.gz \
+  --output /path/to/gene-checkpoint.json
+```
+
+The mouse equivalent uses `--dataset mouse-gencode-m39 --gene Sp1` and M39
+files. This verifies official raw bytes, retained gene models/translation IDs,
+the pinned mart identity and returned amino-acid bounds. It does **not** build
+SQLite, prove genomic projection, exercise a full cold SpliceImpactR accession,
+or establish genome-wide completeness/determinism. A failed archive response
+is a failed checkpoint even when raw-file validation passed.
+
+The existing `verify_release.sh` is the historical **v45** gate. For another
+profile, separately preserve/rebuild/compare that profile's receipts, verify
+its full database and run the scoped API/UI checks; do not use a v45 receipt as
+evidence for a different dataset.
 
 ## 2. Build the small SP1 acceptance fixture
 
@@ -114,8 +145,8 @@ different data package can be tested with, for example:
 ```bash
 python3 scripts/smoke_test_api.py \
   --base-url http://127.0.0.1:8010 \
+  --dataset mouse-gencode-m39 \
   --gene-query MYGENE \
-  --transcript ENST00000000000 \
   --expect-scope full
 ```
 
@@ -148,7 +179,9 @@ Then check the following on the SP1 fixture:
    deep link. Verify that stale build state is rejected rather than silently
    applied.
 6. Export a bounded JSON/TSV/CSV record and a PDF report; inspect that the
-   identifiers, intervals, and feature counts match the selected rows.
+   identifiers, intervals, feature counts and dataset/build provenance match
+   the selected rows. An empty API TSV export contains one
+   `# transcript-browser-provenance` comment, not a fabricated feature row.
 7. Use browser developer tools' Network panel and confirm that the production
    bundle makes no request to a CDN, analytics service, or non-loopback API.
    Repeat the core flow at a narrow and wide viewport and in at least two
@@ -161,6 +194,36 @@ Then check the following on the SP1 fixture:
 Record failures with the build hash, request URL, selected transcript/source,
 viewport, browser/version, and a screenshot. Do not attach local cache paths or
 private diagnostics to a public issue.
+
+### Optional automated browser regressions
+
+Playwright is an external test dependency, not a browser runtime dependency.
+The three-dataset selector/isolation test runs against deliberately tiny
+synthetic contracts, created outside the repository:
+
+```bash
+.venv/bin/python tests/ui/serve_dataset_fixtures.py --port 8771
+# In another terminal with Playwright available:
+BROWSER_ORIGIN=http://127.0.0.1:8771 node tests/ui/datasets.cjs
+```
+
+Set `PLAYWRIGHT_MODULE` to an installed Playwright module path when it is not
+resolvable from the checkout. `BROWSER_ENGINE=firefox` selects Firefox;
+`CHROME_EXECUTABLE` optionally selects a local Chrome binary. Stop the fixture
+server with Ctrl+C. Its padded metadata and artificial human/mouse records are
+API fixtures, never biological evidence or data to distribute.
+
+Against a running **complete v45** package, test All/Top/None, individual
+collapse persistence, TPM1-229, dense ANK2 lazy demand, and delayed explicit
+session/history restoration:
+
+```bash
+BROWSER_ORIGIN=http://127.0.0.1:8000 node tests/ui/protein_defaults.cjs
+```
+
+This test must not run against the tiny selector fixture or an unrelated
+release. Run both browser engines and keep installation/projection/determinism
+claims separate from these observed interaction checks.
 
 ## 5. Full-build and release checks
 
@@ -218,3 +281,44 @@ scientific identity, private independent clones, unchanged source files,
 corrupt code/data rejection, non-overwrite, traversal/symlink boundaries, and
 optional-reference relocation/receipts using a tiny synthetic reference.
 It does not replace full-genome reference or physical Dock/Finder checks.
+
+## Feature-call comparison and optional human PPI context
+
+The source gate includes exact source/accession/method comparison, repeated
+calls, loading/error/unavailable states, original out-of-bounds calls, complete
+CSV/TSV provenance, spreadsheet safety, and comparison-side feature ownership.
+It also checks the public R context exporter, streaming sidecar import,
+endpoint A/B/self ownership, per-dataset binding, rejected/corrupt/absent context,
+mouse exclusion, and private native sidecar cloning. A shared synthetic API
+fixture is validated by both the backend and frontend suites.
+
+For an actual human v45 build, first prepare the optional context following
+[the README](../README.md#optional-human-ppi-context), restart the server, and
+run the real-browser acceptance script. Install Playwright separately in a
+test environment; it is not an application dependency. Supply the module path
+if that environment is outside the checkout:
+
+```bash
+BROWSER_ORIGIN=http://127.0.0.1:8000 \
+  BROWSER_ENGINE=chromium \
+  PLAYWRIGHT_MODULE=/path/to/node_modules/playwright \
+  node tests/ui/feature_comparison.cjs
+```
+
+Repeat with `BROWSER_ENGINE=firefox` and its installed Playwright browser.
+`CHROME_EXECUTABLE` optionally selects a local Chrome executable. The script
+uses a disposable browser profile and checks actual SP1 feature calls,
+inspection of either isoform without losing the pair, full TSV download,
+Canvas-filter independence, context paging/filtering, provenance, product
+titles/About/diagnostics and compatible session exports, no browser errors
+and no external runtime requests. It expects the reviewed v45 package,
+not a tiny fixture or another release. Optional `BROWSER_SCREENSHOT` and
+`PPI_SCREENSHOT` paths capture the two Compare sections after testing.
+`EXPANDED_SCREENSHOT` and `SEQUENCE_SCREENSHOT` capture their corresponding
+initial transcript/sequence views; all captures use a disposable profile.
+
+This is evidence for recorded feature differences and gene-level interaction
+context, **not** validated PPI switch predictions or full v50/M39 builds. The
+public `get_ppi_switches()` endpoint-attribution issue remains a separate
+scientific blocker. On macOS, headless browser/native tests still need access
+to GUI services; an engine abort before page creation is not an app assertion.

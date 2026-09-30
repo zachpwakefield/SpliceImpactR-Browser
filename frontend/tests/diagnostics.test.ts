@@ -20,6 +20,7 @@ test("diagnostics are bounded to support-safe fields", () => {
     serviceUrl: "http://127.0.0.1:8765/private/path?note=secret",
     externalResourceCount: 0,
   });
+  assert.ok(output.startsWith("SpliceImpactR Browser diagnostics\n"));
   assert.match(output, /Application version: 1\.1\.0/);
   assert.match(output, /Local service: http:\/\/127\.0\.0\.1:8765/);
   assert.doesNotMatch(output, /private|secret/);
@@ -29,4 +30,3 @@ test("diagnostics are bounded to support-safe fields", () => {
 test("diagnostics never expose non-loopback service URLs", () => {
   assert.equal(safeServiceOrigin("https://example.org/user/zach"), "non-loopback origin (unexpected)");
 });
-

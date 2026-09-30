@@ -14,6 +14,15 @@ PACKAGE = "data/builds/gencode_v45"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
+def dataset_packages(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Legacy runtimes contain one v45 package; new runtimes declare each one."""
+    return manifest.get("datasetPackages") or [{
+        "datasetId": "human-gencode-v45", "packageDirectory": PACKAGE,
+        "buildHash": manifest["buildHash"], "assembly": "GRCh38.p14",
+        "reference": manifest.get("reference"),
+    }]
+
+
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -65,15 +74,50 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
                 raise ValueError(f"Invalid runtime size for {relative}.")
             if key == "externalFiles" and not Path(str(record.get("source", ""))).is_absolute():
                 raise ValueError(f"Invalid local source for {relative}.")
-    required = {"backend/app/cli.py", "site-packages/uvicorn/__init__.py", "frontend/dist/index.html", f"{PACKAGE}/manifest.json"}
+    required = {"backend/app/cli.py", "site-packages/uvicorn/__init__.py", "frontend/dist/index.html"}
+    packages = manifest.get("datasetPackages")
+    if packages is not None:
+        if not isinstance(packages, list) or not packages:
+            raise ValueError("Runtime dataset packages must be a nonempty list.")
+        required.update({"backend/datasets.py", "backend/data/dataset_profiles.json"})
+        identities, directories = set(), set()
+        for package in packages:
+            if not isinstance(package, dict) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", str(package.get("datasetId", ""))):
+                raise ValueError("Runtime dataset identity is invalid.")
+            relative = package.get("packageDirectory")
+            if not isinstance(relative, str) or not relative.startswith("data/builds/"):
+                raise ValueError("Runtime dataset package path is invalid.")
+            safe_child(Path("/nonexistent-runtime-validation-root"), relative)
+            if package["datasetId"] in identities or relative in directories or not package.get("buildHash") or not package.get("assembly"):
+                raise ValueError("Runtime dataset packages duplicate or lack scientific identity.")
+            identities.add(package["datasetId"])
+            directories.add(relative)
+        default = next((package for package in packages if package["datasetId"] == manifest.get("defaultDatasetId")), None)
+        if default is None or default["buildHash"] != manifest["buildHash"]:
+            raise ValueError("Runtime default dataset identity is inconsistent.")
+    for package in dataset_packages(manifest):
+        directory = package["packageDirectory"]
+        required.add(f"{directory}/manifest.json")
+        if f"{directory}/annotation.sqlite" not in manifest["externalFiles"]:
+            raise ValueError("Runtime manifest has no database clone declaration.")
+        ppi = package.get("ppiContext")
+        if ppi is not None:
+            expected_directory = f"data/ppi_context/{package['datasetId']}"
+            if not isinstance(ppi, dict) or ppi.get("directory") != expected_directory or not SHA256.fullmatch(str(ppi.get("contextHash", ""))):
+                raise ValueError("Runtime interaction context identity/path is invalid.")
+            if package["datasetId"].startswith("mouse-"):
+                raise ValueError("Human interaction context must not be packaged with a mouse dataset.")
+            required.add(f"{expected_directory}/manifest.json")
+            if f"{expected_directory}/context.sqlite" not in manifest["externalFiles"]:
+                raise ValueError("Runtime interaction context needs a private database clone declaration.")
     if not required.issubset(manifest["bundledFiles"]):
         raise ValueError("Runtime manifest is missing required browser files.")
-    if f"{PACKAGE}/annotation.sqlite" not in manifest["externalFiles"]:
-        raise ValueError("Runtime manifest has no database clone declaration.")
     if manifest.get("frontendIndexSha256") != manifest["bundledFiles"]["frontend/dist/index.html"]["sha256"]:
         raise ValueError("Runtime frontend identity is inconsistent.")
-    reference = manifest.get("reference")
-    if reference is not None:
+    for package in dataset_packages(manifest):
+        reference = package.get("reference")
+        if reference is None:
+            continue
         if not isinstance(reference, dict) or not isinstance(reference.get("keys"), dict):
             raise ValueError("Runtime reference declaration is invalid.")
         for field in ("directory", "manifestName"):
@@ -86,7 +130,11 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
             if not isinstance(name, str):
                 raise ValueError("Runtime reference artifact name must be a string.")
             safe_child(Path("/nonexistent-runtime-validation-root"), name)
-            relative = f"external-files/reference/{name}"
+            prefix = reference.get("externalDirectory", "external-files/reference")
+            if not isinstance(prefix, str):
+                raise ValueError("Runtime reference clone directory is invalid.")
+            safe_child(Path("/nonexistent-runtime-validation-root"), prefix)
+            relative = f"{prefix}/{name}"
             if relative not in manifest["externalFiles"]:
                 raise ValueError("Runtime reference artifact is not declared as a private clone.")
         if len(set(reference["keys"].values())) != len(reference["keys"]):

@@ -56,9 +56,9 @@ cd "$ROOT"
 "$VENV_PYTHON" -B -m unittest discover -s backend/tests -p 'test_*.py' -v
 
 cd "$ROOT/frontend"
-CI=true pnpm test
-CI=true pnpm run typecheck
-CI=true pnpm run build
+CI=true pnpm --config.verify-deps-before-run=false test
+CI=true pnpm --config.verify-deps-before-run=false run typecheck
+CI=true pnpm --config.verify-deps-before-run=false run build
 
 cd "$ROOT"
 "$PYTHON_BIN" -B scripts/audit_offline_bundle.py

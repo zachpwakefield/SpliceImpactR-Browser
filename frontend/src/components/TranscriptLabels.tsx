@@ -173,7 +173,7 @@ export function TranscriptLabels({
 
             {expanded && (
               <div className="label-expansion">
-                {transcript.featuresState === "loading" ? (
+                {transcript.featuresState === "idle" || transcript.featuresState === "loading" ? (
                   <div className="feature-loading-label" role="status">Loading local protein annotations…</div>
                 ) : transcript.featuresState === "error" ? (
                   <div className="empty-feature-label error" role="alert">

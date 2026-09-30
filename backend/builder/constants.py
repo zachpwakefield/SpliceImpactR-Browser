@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 SCHEMA_VERSION = "1.1.0"
-BUILDER_VERSION = "0.4.0"
+BUILDER_VERSION = "0.5.0"
 
 GENCODE_RELEASE = "GENCODE v45"
 ENSEMBL_RELEASE = 111

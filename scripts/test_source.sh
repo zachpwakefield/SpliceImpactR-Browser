@@ -68,9 +68,11 @@ echo "[5/5] frontend tests/build (if frontend dependencies are installed)"
 if [[ -x "$ROOT/frontend/node_modules/.bin/tsx" ]] && command -v pnpm >/dev/null 2>&1; then
   (
     cd "$ROOT/frontend"
-    CI=true pnpm test
-    CI=true pnpm run typecheck
-    CI=true pnpm run build
+    # Newer pnpm releases may auto-install when running scripts. Testing must
+    # use the already installed lockfile dependencies, never mutate/download.
+    CI=true pnpm --config.verify-deps-before-run=false test
+    CI=true pnpm --config.verify-deps-before-run=false run typecheck
+    CI=true pnpm --config.verify-deps-before-run=false run build
   )
 else
   if [[ "$REQUIRE_FRONTEND" -eq 1 ]]; then
@@ -83,11 +85,12 @@ fi
 
 if command -v Rscript >/dev/null 2>&1; then
   Rscript --vanilla -e \
-    'parse(file="r/export_features.R"); parse(file="r/preflight.R"); parse(file="r/browser_annotation.R"); parse(file="r/archive_features.R"); parse(file="r/library_setup.R"); parse(file="scripts/prepare_spliceimpactr_cache.R")' \
+    'invisible(lapply(c("r/export_features.R", "r/preflight.R", "r/datasets.R", "r/browser_annotation.R", "r/archive_features.R", "r/library_setup.R", "scripts/prepare_spliceimpactr_cache.R", "scripts/export_ppi_context.R", "tests/r/test_ppi_context_export.R", "tests/r/test_dataset_release_smoke.R"), function(path) parse(file=path)))' \
     >/dev/null
   echo "R source parse passed."
   if Rscript --vanilla -e 'quit(status=if(all(vapply(c("SpliceImpactR","data.table","jsonlite","digest","rtracklayer","Biostrings"), requireNamespace, logical(1), quietly=TRUE))) 0 else 1)' >/dev/null 2>&1; then
     Rscript --vanilla tests/r/test_browser_annotation.R
+    Rscript --vanilla tests/r/test_ppi_context_export.R
   elif [[ "$REQUIRE_ALL" -eq 1 ]]; then
     echo "ERROR: R dependencies missing; run ./scripts/install_spliceimpactr.sh" >&2
     exit 1

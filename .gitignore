@@ -14,9 +14,13 @@ desktop_app/dist/
 *.app/
 
 # Scientific inputs and generated local builds are intentionally not checked in.
+# Preserve root-level RDS scratch/cache files locally; never include them in Git.
+/*.rds
+/*.RDS
 /data/cache/
 /data/reference/
 /data/spliceimpactr-cache/
+/data/ppi_context/
 /data/builds/*
 !/data/builds/README.md
 /output/

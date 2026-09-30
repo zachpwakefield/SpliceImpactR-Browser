@@ -1,7 +1,9 @@
 import type {
+  BrowserViewState,
   DisplayMode,
   DisplayModeSetting,
   Locus,
+  ProteinExpansionDefault,
   RegionData,
   Transcript,
 } from "../types";
@@ -15,6 +17,52 @@ export const MAX_TRANSCRIPT_RENDER_LIMIT = 500;
 // height. Keep deliberate multi-expansion useful without allowing an imported
 // URL/session to fan out across an entire dense gene.
 export const MAX_EXPANDED_TRANSCRIPTS = 25;
+// All mode uses one flag rather than placing the entire gene in the manually
+// expanded set. Its bounded exceptions can cover a dense gene without eager
+// requests for every translated transcript.
+export const MAX_COLLAPSED_PROTEIN_TRANSCRIPTS = 500;
+
+export type ProteinExpansionState = Pick<BrowserViewState, "displayMode" | "expandedTranscriptIds"> & {
+  expandAllProteins: boolean;
+  collapsedProteinTranscriptIds: string[];
+};
+
+/** Missing and malformed saved preferences retain the historical Top default. */
+export function normalizeProteinExpansionDefault(value: unknown): ProteinExpansionDefault {
+  return value === "all" || value === "none" ? value : "top";
+}
+
+/** Starting disclosures only; these helpers do not fetch protein annotations. */
+export function proteinExpansionDefaults(
+  policy: unknown,
+  transcripts: readonly Transcript[],
+): ProteinExpansionState {
+  const normalized = normalizeProteinExpansionDefault(policy);
+  const firstTranslated = transcripts.find((transcript) => transcript.proteinLength > 0);
+  return {
+    displayMode: normalized === "none" ? "labeled" : "expanded",
+    expandedTranscriptIds: normalized === "top" && firstTranslated ? [firstTranslated.id] : [],
+    expandAllProteins: normalized === "all",
+    collapsedProteinTranscriptIds: [],
+  };
+}
+
+/**
+ * Resolve disclosures for current rows without expanding the bounded manual
+ * set. Explicit manual opens win collapse exceptions; callers should remove
+ * that exception when force-opening a transcript so the override stays clear.
+ */
+export function effectiveProteinExpansionIds(
+  transcripts: readonly Transcript[],
+  view: Pick<BrowserViewState, "expandedTranscriptIds" | "expandAllProteins" | "collapsedProteinTranscriptIds">,
+): string[] {
+  const manual = new Set(view.expandedTranscriptIds.slice(0, MAX_EXPANDED_TRANSCRIPTS));
+  const collapsed = new Set((view.collapsedProteinTranscriptIds ?? []).slice(0, MAX_COLLAPSED_PROTEIN_TRANSCRIPTS));
+  return [...new Set(transcripts
+    .filter((transcript) => manual.has(transcript.id)
+      || (view.expandAllProteins === true && transcript.proteinLength > 0 && !collapsed.has(transcript.id)))
+    .map((transcript) => transcript.id))];
+}
 
 export interface TranscriptRevealRequest {
   requestId: number;

@@ -11,13 +11,14 @@ import webbrowser
 import uvicorn
 
 from .errors import StartupValidationError
+from .constants import APPLICATION_NAME
 from .main import create_app
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="transcript-browser",
-        description="Serve the immutable local transcript browser on 127.0.0.1.",
+        prog="spliceimpactr-browser",
+        description=f"Serve {APPLICATION_NAME} locally on 127.0.0.1.",
     )
     parser.add_argument(
         "--project-root",
@@ -30,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Override the normal or development-fixture data package directory.",
     )
+    parser.add_argument("--dataset", help="Default installed dataset profile ID; individual API requests remain independently dataset-scoped.")
     parser.add_argument(
         "--dev-fixture",
         action="store_true",
@@ -84,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             dev_fixture=args.dev_fixture,
             full_reference_verify=args.full_reference_verify,
             full_database_verify=args.full_database_verify,
+            dataset=args.dataset,
         )
     except StartupValidationError as exc:
         print(f"startup validation failed: {exc}", file=sys.stderr)
@@ -92,8 +95,9 @@ def main(argv: list[str] | None = None) -> int:
     url = f"http://127.0.0.1:{args.port}"
     package = app.state.runtime_package
     mode = "SP1 TECHNICAL PREVIEW" if package.technical_preview else "VERIFIED FULL BUILD"
-    print(f"Local Transcript Browser — {mode}")
+    print(f"{APPLICATION_NAME} — {mode}")
     print(f"Build: {package.build_hash}")
+    print(f"Dataset: {package.dataset_id} ({package.profile['species']}, {package.profile.release_label}, Ensembl {package.profile['ensembl_release']})")
     print(f"URL:   {url}")
     print("Binding: 127.0.0.1 only")
     if args.open:

@@ -9,10 +9,14 @@ import os
 from pathlib import Path
 import re
 from typing import Any, Mapping
+from urllib.parse import urlencode
+
+from backend.datasets import DatasetProfile, profile_for_metadata
 
 from .constants import DENSITY_TILE_LEVELS, EXPECTED_SCHEMA_VERSION
 from .database import AnnotationDatabase, DatabaseMetadata
 from .errors import StartupValidationError
+from .ppi_context import PpiContext, absent_ppi_context
 
 
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -170,28 +174,41 @@ class RuntimePackage:
     build_hash: str
     technical_preview: bool
     reference: ReferencePackage | None
+    profile: DatasetProfile
+    default_view: Mapping[str, Any]
+    ppi_context: PpiContext | None = None
+
+    @property
+    def dataset_id(self) -> str:
+        return self.profile.dataset_id
 
     def api_manifest(self) -> dict[str, Any]:
+        ppi_context = self.ppi_context or absent_ppi_context(self.profile)
         release = _first(
             self.manifest,
             "release",
             "gencode_release",
             "gencodeRelease",
-            default="GENCODE v45",
+            default=self.profile.release_label,
         )
         ensembl = _first(
             self.manifest,
             "ensembl_release",
             "ensemblRelease",
-            default=111,
+            default=self.profile["ensembl_release"],
         )
-        assembly = _first(self.manifest, "assembly", default="GRCh38.p14")
+        assembly = _first(self.manifest, "assembly", default=self.profile["assembly"])
         sources = _first(
             self.manifest,
             "feature_sources",
             "featureSources",
             default=[],
         )
+        sources = [
+            {**entry, "recordCount": entry.get("recordCount", entry.get("records", 0)), "status": entry.get("status", "available")}
+            if isinstance(entry, dict) else {"name": str(entry), "status": "available", "recordCount": 0}
+            for entry in sources
+        ]
         capabilities = dict(self.manifest.get("capabilities") or {})
         capabilities.update(
             {
@@ -204,6 +221,8 @@ class RuntimePackage:
                 "boundedRegionPagination": True,
                 "selectedEntityLodOverride": True,
                 "pdfReports": True,
+                "ppiPredictions": False,
+                "ppiContext": ppi_context.available,
             }
         )
         density_levels: list[int] = []
@@ -220,17 +239,23 @@ class RuntimePackage:
                 "available": True,
                 "verified": True,
                 "kind": self.reference.kind,
-                "url": f"/reference/{self.reference.primary_relative}",
+                "url": f"/reference/{self.reference.primary_relative}?" + urlencode({"dataset": self.dataset_id}),
                 "chromSizesUrl": "/reference/"
-                + self.reference.chrom_sizes_public_name,
+                + self.reference.chrom_sizes_public_name + "?" + urlencode({"dataset": self.dataset_id}),
             }
             if self.reference.fai_public_name is not None:
-                reference["faiUrl"] = "/reference/" + self.reference.fai_public_name
+                reference["faiUrl"] = "/reference/" + self.reference.fai_public_name + "?" + urlencode({"dataset": self.dataset_id})
             if self.reference.gzi_public_name is not None:
-                reference["gziUrl"] = "/reference/" + self.reference.gzi_public_name
+                reference["gziUrl"] = "/reference/" + self.reference.gzi_public_name + "?" + urlencode({"dataset": self.dataset_id})
         return {
             "schemaVersion": EXPECTED_SCHEMA_VERSION,
             "buildHash": self.build_hash,
+            "datasetId": self.dataset_id,
+            "label": self.profile["label"],
+            "species": self.profile["species"],
+            "scientificName": self.profile["scientific_name"],
+            "gencodeRelease": self.profile["gencode_release"],
+            "defaultView": dict(self.default_view),
             "release": release,
             "ensemblRelease": ensembl,
             "assembly": assembly,
@@ -238,6 +263,7 @@ class RuntimePackage:
             "scope": self.manifest.get("scope"),
             "featureSources": sources,
             "capabilities": capabilities,
+            "ppiContext": ppi_context.api_status(),
             "densityTileLevels": density_levels,
             "validation": {
                 "available": self.validation_report is not None,
@@ -513,9 +539,14 @@ def _load_reference(
             "Reference manifest is not marked checksum-verified. Rebuild the reference package."
         )
     assembly = str(metadata.get("assembly", outer_manifest.get("assembly", "")))
-    if assembly != "GRCh38.p14":
+    expected_assembly = outer_manifest.get("assembly")
+    for label, source in (("reference manifest", reference_manifest), ("outer reference metadata", outer_reference)):
+        declared_assembly = source.get("assembly")
+        if declared_assembly is not None and declared_assembly != expected_assembly:
+            raise StartupValidationError(f"{label} assembly {declared_assembly!r} differs from annotation assembly {expected_assembly!r}")
+    if not expected_assembly or assembly != expected_assembly:
         raise StartupValidationError(
-            f"Reference assembly is {assembly or '<missing>'}; expected GRCh38.p14."
+            f"Reference assembly is {assembly or '<missing>'}; expected {expected_assembly or '<missing annotation assembly>'}."
         )
 
     # Preferred manifest contract: every public reference artifact is declared
@@ -756,6 +787,7 @@ def _load_validation_report(
 def _validate_full_release_contract(
     database: AnnotationDatabase,
     manifest: Mapping[str, Any],
+    profile: DatasetProfile,
 ) -> None:
     if str(manifest.get("scope", "")).lower() != "full":
         raise StartupValidationError(
@@ -817,6 +849,8 @@ def _validate_full_release_contract(
             raise StartupValidationError(
                 f"Full build manifest has no positive {table} count."
             )
+        if table in {"gene", "transcript"} and count != profile["expected"]["gtf_feature_rows"][table]:
+            raise StartupValidationError(f"Full dataset {profile.dataset_id} {table} inventory is incomplete: expected {profile['expected']['gtf_feature_rows'][table]}, got {count}")
 
 
 def load_runtime_package(
@@ -858,10 +892,20 @@ def load_runtime_package(
             "the package may be incomplete or mixed."
         )
 
+    try:
+        profile = profile_for_metadata(manifest, legacy_v45=True)
+        internal_profile = profile_for_metadata(database_metadata.values, legacy_v45=True)
+    except ValueError as exc:
+        raise StartupValidationError(str(exc)) from exc
+    if profile.dataset_id != internal_profile.dataset_id:
+        raise StartupValidationError("Dataset mismatch between manifest.json and annotation.sqlite")
+    for row in database.fetch_all("SELECT name,length FROM contig"):
+        if profile.contigs.get(str(row["name"])) != row["length"]:
+            raise StartupValidationError(f"Annotation contig {row['name']} length differs from verified {profile['assembly']} metadata")
     expected_release_metadata = {
-        "release": "GENCODE v45",
-        "ensembl_release": "111",
-        "assembly": "GRCh38.p14",
+        "release": profile.release_label,
+        "ensembl_release": str(profile["ensembl_release"]),
+        "assembly": profile["assembly"],
     }
     external_metadata = {
         "release": _first(
@@ -924,13 +968,28 @@ def load_runtime_package(
         required=not dev_fixture,
     )
     if not dev_fixture:
-        _validate_full_release_contract(database, manifest)
+        _validate_full_release_contract(database, manifest, profile)
 
     reference = _load_reference(
         package_root,
         manifest,
         full_verify=full_reference_verify,
     )
+    if reference is not None:
+        sizes: dict[str, int] = {}
+        try:
+            for line in reference.chrom_sizes.read_text(encoding="ascii").splitlines():
+                if not line.strip() or line.startswith("#"):
+                    continue
+                name, length = line.split("\t")
+                if name in sizes:
+                    raise ValueError("duplicate contig")
+                sizes[name] = int(length)
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise StartupValidationError("Verified reference chrom.sizes is malformed") from exc
+        for row in database.fetch_all("SELECT name,length FROM contig"):
+            if sizes.get(str(row["name"])) != row["length"]:
+                raise StartupValidationError(f"Reference contig {row['name']} length differs from the annotation dataset")
     return RuntimePackage(
         root=package_root,
         manifest_path=manifest_path,
@@ -941,4 +1000,31 @@ def load_runtime_package(
         build_hash=external_hash,
         technical_preview=technical_preview,
         reference=reference,
+        profile=profile,
+        default_view=_default_view(database, profile),
     )
+
+
+def _default_view(database: AnnotationDatabase, profile: DatasetProfile) -> dict[str, Any]:
+    """Resolve defaults against this immutable database, never another species."""
+
+    gene = database.fetch_one("SELECT * FROM gene WHERE symbol = ? ORDER BY gene_id LIMIT 1", (profile["preferred_default_gene"],))
+    if gene is None:
+        gene = database.fetch_one("SELECT * FROM gene ORDER BY gene_id LIMIT 1")
+    if gene is None:
+        raise StartupValidationError("Dataset has no gene from which to resolve a default view")
+    transcript = database.fetch_one(
+        "SELECT transcript_id FROM transcript WHERE gene_id = ? ORDER BY is_mane_select DESC, is_ensembl_canonical DESC, is_basic DESC, protein_length DESC, transcript_id LIMIT 1",
+        (gene["gene_id"],),
+    )
+    contig = database.fetch_one("SELECT length FROM contig WHERE name = ?", (gene["contig"],))
+    if contig is None:
+        raise StartupValidationError("Default gene uses an unknown dataset contig")
+    pad = max(100, int((int(gene["end0"]) - int(gene["start0"])) * 0.08))
+    transcript_id = str(transcript["transcript_id"]) if transcript else None
+    return {
+        "selectedGeneId": str(gene["gene_id"]),
+        "selectedTranscriptId": transcript_id,
+        "expandedTranscriptIds": [transcript_id] if transcript_id else [],
+        "locus": {"chrom": gene["contig"], "start0": max(0, int(gene["start0"]) - pad), "end0": min(int(contig["length"]), int(gene["end0"]) + pad)},
+    }

@@ -1,6 +1,6 @@
 {
-  "name": "local-transcript-browser-frontend",
-  "version": "1.1.2",
+  "name": "spliceimpactr-browser-frontend",
+  "version": "1.2.0",
   "license": "MIT",
   "private": true,
   "type": "module",

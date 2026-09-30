@@ -1,2 +1,1 @@
-"""Local transcript browser backend package."""
-
+"""SpliceImpactR Browser backend package."""

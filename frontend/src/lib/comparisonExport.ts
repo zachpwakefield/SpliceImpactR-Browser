@@ -1,5 +1,6 @@
 import {
   FEATURE_SOURCES,
+  type BuildManifest,
   type FeatureSource,
   type Gene,
   type Transcript,
@@ -63,6 +64,11 @@ export type UserAnnotationLookup = Readonly<Partial<Record<EntityKey, UserAnnota
 
 export const COMPARISON_EXPORT_COLUMNS = [
   "build_hash",
+  "dataset_id",
+  "species",
+  "gencode_release",
+  "ensembl_release",
+  "assembly",
   "gene_id",
   "gene_versioned_id",
   "gene_symbol",
@@ -198,6 +204,7 @@ export function buildComparisonExportRows(
   gene: Gene,
   selection: readonly ComparisonExportTranscript[],
   annotations?: UserAnnotationLookup,
+  manifest?: BuildManifest,
 ): ComparisonExportRow[] {
   if (selection.length > MAX_COMPARISON_EXPORT_TRANSCRIPTS) {
     throw new ComparisonExportSelectionError(
@@ -223,10 +230,15 @@ export function buildComparisonExportRows(
     const hasProtein = proteinApplicable(transcript);
     const featureCounts = Object.fromEntries(FEATURE_SOURCES.map((source) => [
       `feature_count_${source}`,
-      exportMetric(transcriptFeatureCountCell(transcript, source)),
+      exportMetric(transcriptFeatureCountCell(transcript, source, manifest?.featureAvailability)),
     ])) as Record<`feature_count_${FeatureSource}`, ComparisonExportValue>;
     return {
       build_hash: buildHash,
+      dataset_id: manifest?.datasetId ?? "not declared",
+      species: manifest?.species ?? "not declared",
+      gencode_release: manifest?.gencodeRelease ?? "not declared",
+      ensembl_release: manifest?.ensemblRelease ?? "not declared",
+      assembly: manifest?.assembly ?? "not declared",
       gene_id: gene.id,
       gene_versioned_id: gene.versionedId,
       gene_symbol: gene.symbol,

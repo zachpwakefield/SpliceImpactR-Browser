@@ -5,9 +5,9 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleDisplayName</key>
-  <string>Transcript Browser</string>
+  <string>SpliceImpactR Browser</string>
   <key>CFBundleExecutable</key>
-  <string>TranscriptBrowserLauncher</string>
+  <string>SpliceImpactRBrowserLauncher</string>
   <key>CFBundleIdentifier</key>
   <string>local.transcript-browser.launcher</string>
   <key>CFBundleIconFile</key>
@@ -15,13 +15,13 @@
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Transcript Browser</string>
+  <string>SpliceImpactR Browser</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.1.2</string>
+  <string>1.2.0</string>
   <key>CFBundleVersion</key>
-  <string>5</string>
+  <string>6</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
   <key>LSMinimumSystemVersion</key>

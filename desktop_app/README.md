@@ -1,6 +1,6 @@
-# Optional macOS / Dock launcher
+# SpliceImpactR Browser — optional macOS / Dock launcher
 
-`Transcript Browser.app` starts the verified local browser without a Terminal
+`SpliceImpactR Browser.app` starts the verified local browser without a Terminal
 window. It opens the default browser only after both the annotation build and
 packaged frontend match. **Open Browser** reopens it; **Stop & Quit** stops only
 the server this launcher started. An already-running matching server may be
@@ -24,7 +24,7 @@ installation, then run from the repository root:
 
 ```bash
 ./desktop_app/install_macos_app.sh
-open "$HOME/Applications/Transcript Browser.app"
+open "$HOME/Applications/SpliceImpactR Browser.app"
 ```
 
 Drag the installed application from your home **Applications** folder to the
@@ -38,10 +38,17 @@ so a different port has separate local browser storage.
 
 ## What is installed
 
-- Signed bundle: `~/Applications/Transcript Browser.app`.
-- Desktop link: `~/Desktop/Transcript Browser.app`.
+- Signed bundle: `~/Applications/SpliceImpactR Browser.app`.
+- Desktop link: `~/Desktop/SpliceImpactR Browser.app`.
 - Versioned code/data: `~/Library/Application Support/Transcript Browser/Runtime`.
 - Server log: `~/Library/Logs/Transcript Browser/server.log` (cleared on the next launch if over 5 MB).
+
+The application and its Desktop/Dock label are now **SpliceImpactR Browser**.
+The private runtime/log directories and bundle identifier intentionally keep
+their legacy names so existing caches and launcher identity remain compatible.
+The installer does not delete an older `Transcript Browser.app`; quit that
+older launcher before installing, and replace its Dock entry with the newly
+named app. Browser storage and exported session formats are unchanged.
 
 Backend code, locked Python packages, production frontend assets, and portable
 metadata are packaged into a ZIP and installed privately. The immutable SQLite
@@ -51,6 +58,15 @@ not support cloning, ordinary copies are used and require additional space.
 All cloned bytes are SHA-256 checked before publication. Optional reference
 links and inode/time receipts point to the final private paths, never staging.
 The original annotation package is not modified.
+
+All installed validated dataset packages are included, along with the shared
+profile metadata. The toolbar can select among them without R or network access.
+To choose a different native default after preparing it, use
+`./desktop_app/install_macos_app.sh mouse-gencode-m39`. For a bundle-only build,
+the second argument selects the default:
+`./desktop_app/build_macos_app.sh "desktop_app/dist/SpliceImpactR Browser.app" mouse-gencode-m39`.
+The installer must be rerun to add a newly prepared dataset to a private runtime;
+it does not download scientific inputs itself.
 
 The Python interpreter itself is **not** embedded. Keep the Python installation
 used to build the app available: its location and version are recorded in the
@@ -79,12 +95,12 @@ For a bundle-only build:
 ./desktop_app/build_macos_app.sh
 ```
 
-Its default output is the ignored `desktop_app/dist/Transcript Browser.app`.
+Its default output is the ignored `desktop_app/dist/SpliceImpactR Browser.app`.
 Installation is still required to prepare the private data. To check an
 installed launcher without opening a browser or showing a window:
 
 ```bash
-"$HOME/Applications/Transcript Browser.app/Contents/MacOS/TranscriptBrowserLauncher" --self-test
+"$HOME/Applications/SpliceImpactR Browser.app/Contents/MacOS/SpliceImpactRBrowserLauncher" --self-test
 ```
 
 Success prints a JSON receipt and exits zero. Any server started by the test is
@@ -105,7 +121,7 @@ modifying a real installed app:
 ```bash
 TEST_HOME="$(mktemp -d "${TMPDIR:-/tmp}/transcript-browser-macos-test.XXXXXX")"
 HOME="$TEST_HOME" ./desktop_app/install_macos_app.sh
-HOME="$TEST_HOME" "$TEST_HOME/Applications/Transcript Browser.app/Contents/MacOS/TranscriptBrowserLauncher" \
+HOME="$TEST_HOME" "$TEST_HOME/Applications/SpliceImpactR Browser.app/Contents/MacOS/SpliceImpactRBrowserLauncher" \
   --self-test --state-root "$TEST_HOME/Library/Application Support/Transcript Browser"
 ```
 

@@ -2,11 +2,18 @@
 
 The application is split into three deliberately replaceable layers.
 
-1. The schema-1.1 annotation builder streams authoritative GENCODE v45 GTF and FASTA records, normalizes the seven local protein-feature tables, projects amino-acid intervals through transcript-ordered CDS segments, materializes exact/prefix search plus four complete density pyramids, validates the result, and atomically publishes an immutable SQLite package.
+1. The schema-1.1 annotation builder streams authoritative profile-matched GENCODE GTF and FASTA records, normalizes the seven local protein-feature tables, projects amino-acid intervals through transcript-ordered CDS segments, materializes exact/prefix search plus four complete density pyramids, validates the result, and atomically publishes an immutable SQLite package.
 2. The FastAPI service opens that package read-only, exposes bounded versioned JSON endpoints plus a bounded `POST /api/v1/report/pdf` generator, serves an optional indexed reference with HTTP byte ranges when one is supplied, and serves the built single-page application. Region queries over-fetch one viewport for smooth panning but preserve requested-interval flags, pagination, semantic detail, and export boundaries.
-3. The React workspace owns URL state and explicit user-directed vertical scrolling. A gene-scoped visual-order layer is applied to immutable transcript summaries before filtering and layout. A shared row-layout model then drives the sticky DOM label rail, Canvas2D track, and dense-gene minimap, including hit bounds and complete logical height. A viewport window selects the DOM rows and Canvas slice to mount/draw, while the outer scroller preserves the complete layout. Up to 25 translated transcripts can remain additively expanded. Expanded height is reserved from the active feature-source selection before asynchronous records arrive, so completion fills stable geometry rather than moving the viewport. Transcript detail demand follows the window plus explicit selected, comparison, pinned, bounded-expanded, and selected-neighbor context. Feature-table and sequence rows are separately virtualized, and stale search, region, detail, feature, sequence, and PDF-report work is aborted. Pure helper layers validate submitted-search resolution, the build-scoped local workspace, current-gene navigation, comparison metrics/export, shortcut gating, PDF presets, diagnostics, and minimap geometry. The renderer is the custom-Canvas fallback explicitly allowed by the implementation plan, so no remote genome registry or igv.js runtime is present.
+3. The React workspace owns URL state and explicit user-directed vertical scrolling. A gene-scoped visual-order layer is applied to immutable transcript summaries before filtering and layout. A shared row-layout model then drives the sticky DOM label rail, Canvas2D track, and dense-gene minimap, including hit bounds and complete logical height. A viewport window selects the DOM rows and Canvas slice to mount/draw, while the outer scroller preserves the complete layout. Manual expansion retains a 25-transcript bound; All mode includes every eligible translated row in the logical layout and loads its features lazily. Expanded height is reserved from the active feature-source selection before asynchronous records arrive, so completion fills stable geometry rather than moving the viewport. Transcript detail demand follows the window plus explicit selected, comparison, pinned, bounded-expanded, and selected-neighbor context. Feature-table and sequence rows are separately virtualized, and stale search, region, detail, feature, sequence, and PDF-report work is aborted. Pure helper layers validate submitted-search resolution, the build-scoped local workspace, current-gene navigation, comparison metrics/export, shortcut gating, PDF presets, diagnostics, and minimap geometry. The renderer is the custom-Canvas fallback explicitly allowed by the implementation plan, so no remote genome registry or igv.js runtime is present.
 
 Runtime data flow:
+
+`backend/data/dataset_profiles.json` is the common Python/R release contract.
+Each profile has its own cache, species/GENCODE/Ensembl/assembly identity and
+immutable build directory. The service opens installed validated contexts and
+resolves `?dataset=ID` per request; it has no mutable global current dataset.
+The frontend switches by loading a new document, scopes every API/download URL,
+and keys saved work by dataset/build. Multiple tabs remain independent.
 
 ```text
 raw GTF + transcript/protein FASTA + feature RDS + optional reference
@@ -26,6 +33,38 @@ raw GTF + transcript/protein FASTA + feature RDS + optional reference
 
 The normal server binds only to `127.0.0.1`. It does not enable permissive CORS, telemetry, remote fonts, hosted genomes, remote search, BLAT, analytics, or CDN assets.
 
+PPI prediction capabilities are false for every profile pending a corrected
+upstream implementation. Mouse never receives human-only interaction evidence.
+
+Optional human PPI context is a separate immutable sidecar under
+`data/ppi_context/<dataset-id>/`, not a mutation of the base annotation package.
+The public R exporter preserves gene A/B ownership and aggregated token sets;
+the streaming importer validates bytes, inventory, public source SHA-256 and
+exact dataset/build binding before atomic publication. The runtime exposes
+`ppiContext` separately from `ppiPredictions=false`; absent/rejected context
+does not prevent ordinary annotation startup. The scoped gene endpoint pages
+records with precomputed gene/evidence summaries. The client checks focal
+ownership and compares exact Pfam/InterPro/ELM identifiers only, never source
+cross-mapping or paired-mechanism reconstruction. Native runtimes bundle the
+small receipt, privately clone the SQLite sidecar, and verify its owning
+dataset/context identity alongside the annotation build.
+
+Feature-call comparison groups by exact source/accession/method and compares
+AA-interval multisets; transcript-specific record IDs are retained, not used to
+equate isoforms. Unknown accessions are separate unassessed observations.
+Difference cards are paged at 12 identities and 6 calls per side; exports use
+complete arrays and an explicit provenance record. Ready valid-empty,
+unavailable source, request failure and missing product are distinct. Feature
+inspection on comparison B preserves the pair by swapping B/A selection.
+
+Protein-track defaults are a dataset/build-scoped preference: All, Top or None.
+All is represented by a boolean plus up to 500 collapse exceptions, not by an
+eager feature-demand list or a 25-row prefix. Logical row geometry includes all
+eligible filtered translated rows, while DOM/Canvas and feature loading use the
+same viewport window plus bounded explicit context. Manual expansion retains
+its 25-row bound. Explicit links/sessions/history/saved views take precedence
+over starting defaults.
+
 Normal startup accepts only a full package whose manifest, SQLite metadata, validation report, schema, release/assembly identifiers, counts, canonical hashes, density levels, and database digest agree. An optional reference receipt is checked when a reference is present. The SP1 acceptance package is reachable only through `--dev-fixture`. Slow full SQLite and optional-reference rehashes are available as explicit release gates without making ordinary startup unbounded.
 
 ## Desktop launcher boundary
@@ -36,16 +75,21 @@ This private workspace prevents Finder-launched Python from blocking on Desktop/
 
 ## State boundaries
 
-- URL state: build hash, locus, selected gene/transcript/comparison/feature, an optional complete transcript-ID permutation for custom visual order, up to 25 independently expanded transcripts, pinned transcripts, source filters, typed prediction classes, transcript biotype/flag filters, row density, Canvas-keyboard preference, display mode, and inspector tab.
-- Local workspace state: schema version, annotation build hash, restore preference, last validated view, 25 recents, 100 ordered favorites, up to 500 bounded user-annotation records, and one last-PDF preset. It is stored under `transcript-browser:workspace:v1`, capped at 512 KiB, and rejected wholesale for corrupt top-level/schema/build state while invalid nested entries are discarded.
-- Server state: immutable build-scoped manifest/search/region/entity queries, lazily loaded transcript detail/features, and lazily loaded sequences.
+User-facing branding is **SpliceImpactR Browser** in the UI, browser title,
+diagnostics, PDFs, CLI/API descriptions and Mac bundle. Stable session/schema,
+storage, HTTP-header and native bundle/data-directory identifiers retain their
+legacy names; this is a display-name refactor, not a scientific-data migration.
+
+- URL state: dataset ID, build hash, locus, selected gene/transcript/comparison/feature, an optional complete transcript-ID permutation for custom visual order, up to 25 independently expanded transcripts, pinned transcripts, source filters, typed prediction classes, transcript biotype/flag filters, row density, Canvas-keyboard preference, display mode, and inspector tab.
+- Local workspace state: schema version, dataset ID, annotation build hash, restore preference, last validated view, 25 recents, 100 ordered favorites, up to 500 bounded user-annotation records, and one last-PDF preset. It is stored under `transcript-browser:workspace:v1:<datasetId>:<buildHash>`, capped at 512 KiB per workspace, and rejected wholesale for corrupt top-level/schema/dataset/build state while invalid nested entries are discarded. A same-build legacy v45 record is copied on first save without deleting the original; clearing writes a scoped empty record so it cannot reappear.
+- Server state: immutable dataset/build-scoped manifest/search/region/entity queries, lazily loaded transcript detail/features, and lazily loaded sequences. No request changes another tab's current dataset.
 - Ephemeral state: hover, temporary hit chooser, command-palette focus/timers, navigator query, scroll/minimap gesture windows, resize measurements, dialogs, and in-progress export/report status.
 
 Live pan and passive UI changes replace the current history entry. Completed searches, submitted coordinates, and explicit fit/jump actions create history entries.
 
 ### Startup restoration and persistence
 
-The manifest is validated before local workspace state is trusted. The workspace build hash must match that manifest, and its last view must independently satisfy the same bounded view-state contract. A ready view is persisted after a 400 ms debounce; normal scrolling is ephemeral and does not generate continuous storage writes. Data is scoped to the browser profile and loopback origin and contains no absolute paths, sequence payloads, PDFs, or scientific annotation payloads; the only annotation-like values are the explicitly separate bounded local user notes/tags described below.
+The manifest is validated before local workspace state is trusted. The workspace dataset and build hash must match that manifest, and its last view must independently satisfy the same bounded view-state contract. A ready view is persisted after a 400 ms debounce; normal scrolling is ephemeral and does not generate continuous storage writes. Data is scoped to the browser profile and loopback origin and contains no absolute paths, sequence payloads, PDFs, or scientific annotation payloads; the only annotation-like values are the explicitly separate bounded local user notes/tags described below.
 
 Startup precedence is deterministic:
 
@@ -73,7 +117,7 @@ The navigator searches the already-loaded, visually ordered transcript summaries
 
 All transcript navigation issues one gene-scoped reveal token. The token is consumed when the row is first present, including when already visible. No effect coupled to layout identity, detail completion, comparison demand, or minimap geometry owns `scrollTop` afterward.
 
-A fresh gene search or explicit gene choice records a one-time default-protein-navigation intent. After the owning gene loads, the first translated transcript is selected and force-opened in Protein features mode; if the gene has no translation, the first transcript remains the fallback without inventing a protein product. This intent is not inferred during ordinary reconciliation. Explicit URL state, Back/Forward restoration, portable-session state, and validated last-view restoration therefore retain their declared display mode and expansion set. Disclosure toggles are additive, de-duplicated, and bounded at 25; reaching the bound rejects a new expansion with a status message rather than evicting an existing row.
+A fresh gene search or explicit gene choice records a one-time default-protein-navigation intent. After the owning gene loads, its All/Top/None preference determines disclosures; the first translated transcript is the selection fallback, or the first untranslated model when no translation exists. This intent is not inferred during ordinary reconciliation and is cancelled by explicit history/session restoration, including during a slow gene load. Explicit and saved state therefore retain their declared mode, All flag and collapse exceptions. Manual toggles remain additive and capped at 25; All geometry is not subject to that manual-ID cap.
 
 ### Submitted-search resolution boundary
 
@@ -105,7 +149,7 @@ The minimap exposes scrollbar semantics, visible-row text, and keyboard navigati
 
 ## Application identity and support diagnostics
 
-Application version `1.1.2` identifies UI, persistence schema integration, protein-expansion behavior, submitted-search resolution, and launcher behavior. The annotation build hash identifies immutable scientific content. They are displayed and released independently; changing `CFBundleShortVersionString` or frontend application code must not modify the annotation manifest/build hash.
+Application version `1.2.0` identifies the dataset-aware UI, persistence, protein defaults, search and launcher behavior. Each annotation build hash identifies immutable scientific content. They are displayed independently; changing `CFBundleShortVersionString` or frontend code must not modify a scientific manifest/build hash. Current audit evidence is in `setup_validation.md`; the asset observations below are historical 1.1.x deployment records.
 
 The patch release is `1.1.1` build 3. Its packaged production assets are `index-DX_Ybgkz.js` (SHA-256 `8f260b9d517511b2bcf4b5723d893a4cd293bc983a8518bd329e1606213210c5`) and `index-C4hHE25D.css` (SHA-256 `528657043ce74b5a80d6174a4a97dd92fc82c5f34e6b2df10b53ac42242bfbdb`). These runtime identities are deployment evidence, not replacements for the immutable annotation build hash.
 
@@ -117,7 +161,7 @@ The About/Diagnostics receipt is derived from a bounded allow-list: application 
 
 - More than 5 Mb resolves to overview density/packed genes.
 - 250 kb to 5 Mb resolves to compact gene context.
-- Less than 250 kb resolves to labeled transcript models; a fresh gene navigation explicitly defaults to Protein features, while an explicit or restored display mode remains authoritative.
+- Less than 250 kb resolves to labeled transcript models; fresh gene navigation applies the All/Top/None preference, while an explicit or restored display mode remains authoritative.
 - Selected and pinned entities are explicit bounded overrides.
 - The comparison transcript is one additional explicit bounded override and never an implicit pin or scroll invariant.
 - Custom transcript order is presentation state only. An empty permutation means the API’s original order; a non-empty permutation is deduplicated, restricted to the active gene, completed with missing canonical IDs, and applied before transcript filters. Changing genes clears it.

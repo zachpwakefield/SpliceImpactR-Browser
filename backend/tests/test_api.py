@@ -135,7 +135,10 @@ def write_db(path: Path, *, technical_preview: bool) -> None:
 
 def write_manifest(package: Path, *, technical_preview: bool, reference: dict | None = None) -> None:
     scope = "sp1" if technical_preview else "full"
-    counts = {"gene": 1, "transcript": 2, "density_tile": 4}
+    # Unit fixtures are intentionally tiny. Full-mode contract tests declare
+    # the official inventory receipt; biological full-build tests verify those
+    # counts against the complete raw GTF and SQLite data independently.
+    counts = {"gene": 1 if technical_preview else 63_187, "transcript": 2 if technical_preview else 252_930, "density_tile": 4}
     content_hashes = {
         key: hashlib.sha256(f"fixture:{key}".encode("ascii")).hexdigest()
         for key in counts
@@ -370,7 +373,12 @@ class ApiTests(unittest.TestCase):
                 },
             )
             self.assertEqual(exported_tsv.status_code, 200)
-            self.assertEqual(exported_tsv.content, b"")
+            self.assertTrue(
+                exported_tsv.text.startswith("# transcript-browser-provenance\t")
+            )
+            provenance = json.loads(exported_tsv.text.split("\t", 1)[1])
+            self.assertEqual(provenance, exported.json()["_provenance"])
+            self.assertNotIn("\n", exported_tsv.text)
 
     def test_search_identity_etag_and_local_security_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -721,7 +729,7 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(matching.status_code, 206)
             self.assertEqual(matching.headers["content-length"], "4")
             api_reference = client.get("/api/v1/manifest").json()["reference"]
-            self.assertEqual(api_reference["faiUrl"], "/reference/genome.fa.fai")
+            self.assertEqual(api_reference["faiUrl"], "/reference/genome.fa.fai?dataset=human-gencode-v45")
             self.assertNotIn("gziUrl", api_reference)
             traversal = client.get("/%2e%2e/secret.txt")
             self.assertNotEqual(traversal.text, "do not serve")

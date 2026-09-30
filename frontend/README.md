@@ -1,4 +1,4 @@
-# Local Transcript Browser frontend
+# SpliceImpactR Browser frontend
 
 The frontend is a local-only React and TypeScript single-page application for
 the full GENCODE v45 browser and its SP1 acceptance fixture. It renders genomic

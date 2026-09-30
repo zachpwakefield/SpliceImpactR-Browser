@@ -40,10 +40,10 @@ jobs:
         run: |
           xcrun swiftc -O -target "$(uname -m)-apple-macosx12.0" \
             -module-cache-path "$RUNNER_TEMP/swift-module-cache" \
-            -framework AppKit desktop_app/TranscriptBrowserLauncher.swift \
-            -o "$RUNNER_TEMP/TranscriptBrowserLauncher"
-          codesign --force --sign - "$RUNNER_TEMP/TranscriptBrowserLauncher"
-          codesign --verify --strict "$RUNNER_TEMP/TranscriptBrowserLauncher"
+            -framework AppKit desktop_app/SpliceImpactRBrowserLauncher.swift \
+            -o "$RUNNER_TEMP/SpliceImpactRBrowserLauncher"
+          codesign --force --sign - "$RUNNER_TEMP/SpliceImpactRBrowserLauncher"
+          codesign --verify --strict "$RUNNER_TEMP/SpliceImpactRBrowserLauncher"
     # This checks native source/toolchain compatibility, not a full scientific
     # installation. The latter remains a separate local generated-data gate.
 
@@ -94,5 +94,7 @@ jobs:
         run: ./scripts/install_spliceimpactr.sh
       - name: Complete-annotation and public-package integration test
         run: Rscript --vanilla tests/r/test_browser_annotation.R
+      - name: Human PPI context exporter contract tests
+        run: Rscript --vanilla tests/r/test_ppi_context_export.R
       - name: R exporter preflight tests
         run: python3 -m unittest tests.data.test_r_preflight -v

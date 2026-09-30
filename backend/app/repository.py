@@ -20,7 +20,7 @@ from .database import AnnotationDatabase
 from .errors import QueryContractError
 
 
-STABLE_ID_RE = re.compile(r"^(ENS(?:G|T|P|E)\d+)(?:\.(\d+))?$", re.IGNORECASE)
+STABLE_ID_RE = re.compile(r"^(ENS(?:MUS)?(?:G|T|P|E)\d+(?:_PAR_Y)?)(?:\.(\d+))?$", re.IGNORECASE)
 LOCUS_RE = re.compile(
     r"^\s*([^\s:]+)\s*:\s*([\d,]+)\s*(?:-|\.\.)\s*([\d,]+)\s*$"
 )
@@ -274,6 +274,11 @@ class AnnotationRepository:
         for row in rows:
             result[str(row["transcript_id"])].append(str(row["tag"]))
         return dict(result)
+
+    def get_gene_identity(self, identifier: str) -> dict[str, Any] | None:
+        """Resolve an entity without loading transcript/feature detail."""
+        row = self._gene_row(identifier)
+        return _gene_json(row) if row is not None else None
 
     def get_gene(self, identifier: str) -> dict[str, Any] | None:
         row = self._gene_row(identifier)
@@ -742,8 +747,8 @@ class AnnotationRepository:
         # malformed/incomplete index cannot make a present stable ID unreachable.
         stable_term = term.upper()
         if not rows and STABLE_ID_RE.fullmatch(stable_term):
-            prefix = stable_term[:4]
-            kind = {"ENSG": "gene", "ENST": "transcript", "ENSP": "protein", "ENSE": "exon"}.get(prefix)
+            prefix_match = re.match(r"^ENS(?:MUS)?([GTPE])", stable_term)
+            kind = {"G": "gene", "T": "transcript", "P": "protein", "E": "exon"}.get(prefix_match.group(1)) if prefix_match else None
             if kind:
                 rows = [
                     {
@@ -789,15 +794,15 @@ class AnnotationRepository:
         transcript_ids: set[str] = set()
         for identifier in identifiers:
             stable = base_stable_id(identifier)
-            if stable.startswith("ENSG"):
+            if stable.startswith(("ENSG", "ENSMUSG")):
                 gene = self._gene_row(identifier)
                 if gene is not None:
                     gene_ids.add(str(gene["gene_id"]))
                 continue
             transcript: dict[str, Any] | None = None
-            if stable.startswith("ENST"):
+            if stable.startswith(("ENST", "ENSMUST")):
                 transcript = self._transcript_row(identifier)
-            elif stable.startswith("ENSP"):
+            elif stable.startswith(("ENSP", "ENSMUSP")):
                 transcript = self._transcript_for_protein(identifier)
             if transcript is not None:
                 transcript_ids.add(str(transcript["transcript_id"]))

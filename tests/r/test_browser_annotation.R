@@ -99,3 +99,4 @@ elm <- browser_confirm_elm(
 stopifnot(nrow(elm) == 1L, elm$ensembl_transcript_id == "T5")
 unlink(directory, recursive = TRUE)
 cat("Complete-annotation adapter passed: all TSLs, unscored, other biotypes, incomplete CDS, PAR_Y, both-strand split codons, and non-interactive R library setup.\n")
+source("tests/r/test_dataset_preparation.R")

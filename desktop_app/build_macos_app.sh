@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SOURCE_DIR="$ROOT/desktop_app"
-OUTPUT_APP="${1:-$SOURCE_DIR/dist/Transcript Browser.app}"
+OUTPUT_APP="${1:-$SOURCE_DIR/dist/SpliceImpactR Browser.app}"
+DATASET="${2:-human-gencode-v45}"
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "The optional desktop launcher can only be built on macOS. Use ./run_local.sh on Linux/WSL2." >&2
   exit 2
@@ -29,8 +30,8 @@ case "$ARCH" in
   arm64|x86_64) ;;
   *) echo "Unsupported Mac architecture: $ARCH" >&2; exit 2 ;;
 esac
-STAGE="$(mktemp -d /private/tmp/transcript-browser-launcher.XXXXXX)"
-STAGED_APP="$STAGE/Transcript Browser.app"
+STAGE="$(mktemp -d /private/tmp/spliceimpactr-browser-launcher.XXXXXX)"
+STAGED_APP="$STAGE/SpliceImpactR Browser.app"
 CONTENTS="$STAGED_APP/Contents"
 trap 'rm -rf "$STAGE"' EXIT
 
@@ -41,14 +42,14 @@ xcrun swiftc \
   -target "$ARCH-apple-macosx12.0" \
   -module-cache-path "$STAGE/ModuleCache" \
   -framework AppKit \
-  "$SOURCE_DIR/TranscriptBrowserLauncher.swift" \
-  -o "$CONTENTS/MacOS/TranscriptBrowserLauncher"
+  "$SOURCE_DIR/SpliceImpactRBrowserLauncher.swift" \
+  -o "$CONTENTS/MacOS/SpliceImpactRBrowserLauncher"
 
 cp "$SOURCE_DIR/Info.plist" "$CONTENTS/Info.plist"
 cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$CONTENTS/Resources/"
 "$ROOT/.venv/bin/python" -B "$SOURCE_DIR/make_icon.py" "$CONTENTS/Resources/AppIcon.icns"
-"$ROOT/.venv/bin/python" -B "$SOURCE_DIR/package_runtime.py" "$ROOT" "$CONTENTS/Resources/Runtime.zip"
-chmod +x "$CONTENTS/MacOS/TranscriptBrowserLauncher"
+"$ROOT/.venv/bin/python" -B "$SOURCE_DIR/package_runtime.py" "$ROOT" "$CONTENTS/Resources/Runtime.zip" --dataset "$DATASET"
+chmod +x "$CONTENTS/MacOS/SpliceImpactRBrowserLauncher"
 
 plutil -lint "$CONTENTS/Info.plist"
 xattr -cr "$STAGED_APP"

@@ -1,6 +1,7 @@
 import {
   FEATURE_SOURCES,
   SOURCE_META,
+  type BuildManifest,
   type FeatureSource,
   type Transcript,
 } from "../types";
@@ -10,7 +11,8 @@ export type ComparisonValueState =
   | "zero"
   | "missing"
   | "not-applicable"
-  | "not-loaded";
+  | "not-loaded"
+  | "unavailable";
 
 export type ComparisonPrimitive = string | number | boolean;
 
@@ -80,6 +82,10 @@ export function notLoadedCell(): ComparisonCell {
   return { state: "not-loaded", value: null, display: "Not loaded" };
 }
 
+export function unavailableCell(): ComparisonCell {
+  return { state: "unavailable", value: null, display: "Unavailable source" };
+}
+
 export function optionalTextCell(value: string | undefined): ComparisonCell {
   const normalized = value?.trim();
   return normalized && normalized.toLocaleLowerCase("en-US") !== "not provided"
@@ -119,7 +125,9 @@ export function transcriptExonCountCell(transcript: Transcript): ComparisonCell 
 export function transcriptFeatureCountCell(
   transcript: Transcript,
   source?: FeatureSource,
+  availability?: BuildManifest["featureAvailability"],
 ): ComparisonCell {
+  if (source && availability?.[source]?.status === "unavailable") return unavailableCell();
   if (transcript.featuresState === "idle" || transcript.featuresState === "loading") return notLoadedCell();
   if (transcript.featuresState === "error") return missingCell();
   const count = source
@@ -180,6 +188,7 @@ export function buildTranscriptComparison(
   selected: Transcript,
   comparison: Transcript,
   featureSources: readonly FeatureSource[] = FEATURE_SOURCES,
+  availability?: BuildManifest["featureAvailability"],
 ): TranscriptComparisonModel {
   const selectedHasProtein = proteinApplicable(selected);
   const comparisonHasProtein = proteinApplicable(comparison);
@@ -249,8 +258,8 @@ export function buildTranscriptComparison(
     ...featureSources.map((source) => row(
       `feature-count-${source}`,
       `Feature count · ${SOURCE_META[source].label}`,
-      transcriptFeatureCountCell(selected, source),
-      transcriptFeatureCountCell(comparison, source),
+      transcriptFeatureCountCell(selected, source, availability),
+      transcriptFeatureCountCell(comparison, source, availability),
     )),
   ];
   return {
@@ -270,6 +279,8 @@ export function comparisonCellExportValue(cell: ComparisonCell): string | number
       return "N/A";
     case "not-loaded":
       return "Not loaded";
+    case "unavailable":
+      return "Unavailable source";
     case "missing":
       return "";
   }

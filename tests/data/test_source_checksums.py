@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backend.builder import build
+from backend.datasets import DatasetProfile
 
 
 class PreparedSourceIntegrityTests(unittest.TestCase):
@@ -26,7 +27,8 @@ class PreparedSourceIntegrityTests(unittest.TestCase):
                     "sha256": hashlib.sha256(feature_bytes).hexdigest(),
                 }},
             }
-            with patch.object(build, "REQUIRED_INPUTS", {"raw.gz": hashlib.md5(raw_bytes).hexdigest()}), patch.object(build, "FEATURE_SOURCES", {"pfam": "pfam.rds"}):
+            profile = DatasetProfile({"raw_inputs": {"gtf": {"file": "raw.gz", "md5": hashlib.md5(raw_bytes).hexdigest()}}})
+            with patch.object(build, "get_dataset_profile", return_value=profile), patch.object(build, "FEATURE_SOURCES", {"pfam": "pfam.rds"}):
                 result = build.validate_source_inputs(root, preparation)
                 self.assertEqual(result["pfam.rds"]["verification_scope"], "integrity_against_preparation_receipt")
                 feature.write_bytes(b"changed")

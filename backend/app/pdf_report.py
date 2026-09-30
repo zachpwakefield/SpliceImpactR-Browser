@@ -15,6 +15,7 @@ import re
 from typing import Any, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from .constants import APPLICATION_NAME
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import letter
@@ -600,13 +601,13 @@ def build_pdf_report(
         topMargin=45,
         bottomMargin=42,
         title=f"{symbol} transcript report",
-        author="Local Transcript Browser",
+        author=APPLICATION_NAME,
         subject="Selected transcript structures, annotations, and sequence excerpts",
         pageCompression=1,
     )
     story: list[Flowable] = []
     story.append(Spacer(1, 0.28 * inch))
-    story.append(Paragraph("LOCAL TRANSCRIPT BROWSER", styles["eyebrow"]))
+    story.append(Paragraph(APPLICATION_NAME, styles["eyebrow"]))
     story.append(Paragraph(f"{_paragraph_text(symbol)} transcript report", styles["title"]))
     story.append(
         Paragraph(
@@ -630,7 +631,10 @@ def build_pdf_report(
         _fact_table(
             [
                 ("Gene", f"{symbol} - {gene.get('versionedId') or gene.get('id')}"),
+                ("Dataset", manifest.get("datasetId") or "Legacy human v45"),
+                ("Species", manifest.get("scientificName") or manifest.get("species") or "Not available"),
                 ("Release", manifest.get("release") or "Not available"),
+                ("Ensembl", manifest.get("ensemblRelease") or "Not available"),
                 ("Assembly", manifest.get("assembly") or "Not available"),
                 ("Build hash", build_hash),
                 ("Generated", generated_at.astimezone().isoformat(timespec="seconds")),

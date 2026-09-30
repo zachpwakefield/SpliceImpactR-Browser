@@ -2,10 +2,12 @@ import { FALLBACK_MANIFEST } from "./data/sp1";
 import {
   FEATURE_SOURCES,
   type BuildManifest,
+  type DatasetCatalog,
   type DensityBin,
   type DisplayModeSetting,
   type FeatureSource,
   type Gene,
+  type GenePPIContext,
   type Locus,
   type ProteinFeature,
   type RegionData,
@@ -20,6 +22,25 @@ type JsonObject = Record<string, unknown>;
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const immutableCache = new Map<string, unknown>();
+// One immutable selection per document. Switching datasets loads a new document,
+// so independent tabs never change one another's server-side or client-side state.
+let selectedDatasetId = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("dataset") ?? "";
+
+export function datasetUrl(path: string, datasetId = selectedDatasetId): string {
+  if (!datasetId) return path;
+  const [base, query = ""] = path.split("?", 2);
+  const params = new URLSearchParams(query);
+  params.set("dataset", datasetId);
+  return `${base}?${params.toString()}`;
+}
+
+export function selectApiDataset(datasetId: string): void {
+  if (!/^[a-z0-9][a-z0-9-]{0,79}$/u.test(datasetId)) throw new ApiError("Invalid dataset identifier.", 400, "INVALID_DATASET");
+  if (selectedDatasetId && selectedDatasetId !== datasetId) {
+    throw new ApiError("The returned annotation dataset differs from this tab's selection.", 409, "DATASET_MISMATCH");
+  }
+  selectedDatasetId = datasetId;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -103,7 +124,10 @@ async function fetchJson<T = unknown>(
   path: string,
   signal: AbortSignal,
   cacheKey?: string,
+  scoped = true,
 ): Promise<T> {
+  path = scoped ? datasetUrl(path) : path;
+  cacheKey = cacheKey ? `${selectedDatasetId}:${cacheKey}` : undefined;
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
   if (cacheKey && immutableCache.has(cacheKey)) return immutableCache.get(cacheKey) as T;
   const controller = new AbortController();
@@ -150,32 +174,69 @@ export function normalizeManifest(value: unknown): BuildManifest {
   const buildHash = firstString(record, ["buildHash", "build_hash", "content_hash", "hash"]);
   if (!buildHash) throw new ApiError("The local build manifest has no build hash.", 500, "INVALID_MANIFEST");
   const reference = objectValue(record.reference);
+  const datasetId = firstString(record, ["datasetId"]);
+  const species = firstString(record, ["species"]);
+  const defaultView = objectValue(record.defaultView);
+  const defaultLocus = objectValue(defaultView?.locus);
   const featureSources = (Array.isArray(record.featureSources) ? record.featureSources : [])
     .map((value) => normalizeSource(objectValue(value)?.name ?? value))
     .filter((source): source is FeatureSource => source !== null);
+  const featureAvailability = Object.fromEntries((Array.isArray(record.featureSources) ? record.featureSources : []).flatMap((value) => {
+    const item = objectValue(value);
+    const source = normalizeSource(item?.name ?? value);
+    if (!source || !item) return [];
+    const status = firstString(item, ["status"]);
+    if (!["available", "available-empty", "unavailable"].includes(status ?? "")) return [];
+    return [[source, { status: status as "available" | "available-empty" | "unavailable", reason: firstString(item, ["reason"]), recordCount: firstNumber(item, ["recordCount", "records"]) }]];
+  }));
   const capabilitiesRecord = objectValue(record.capabilities) ?? {};
   const capabilities = Object.fromEntries(
     Object.entries(capabilitiesRecord).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
   );
-  const release = firstString(record, ["release", "gencodeRelease", "gencode_release"]) ?? "GENCODE v45";
+  const declaredRelease = firstString(record, ["release", "gencodeRelease", "gencode_release"]);
+  const declaredAssembly = firstString(record, ["assembly", "genomeBuild", "genome_build"]);
+  if (datasetId && (!declaredRelease || !declaredAssembly || !["human", "mouse"].includes(species ?? ""))) {
+    throw new ApiError("The dataset manifest is missing its species, release, or assembly identity.", 500, "INVALID_MANIFEST");
+  }
+  const release = declaredRelease ?? "GENCODE v45"; // Legacy v45 manifests only.
   const ensembl = firstNumber(record, ["ensemblRelease", "ensembl_release"])
     ?? firstString(record, ["ensemblRelease", "ensembl_release"]);
+  if (datasetId && (!ensembl || !/^\d+$/u.test(String(ensembl)))) {
+    throw new ApiError("The dataset manifest has no valid Ensembl release identity.", 500, "INVALID_MANIFEST");
+  }
   const referenceAvailable = firstBoolean(reference ?? {}, ["available"]) ?? false;
   const coordinate = objectValue(record.coordinateContract);
+  const ppiContext = objectValue(record.ppiContext);
   return {
+    datasetId,
+    species: species === "human" || species === "mouse" ? species : undefined,
+    label: firstString(record, ["label"]),
+    defaultView: defaultView && defaultLocus ? {
+      selectedGeneId: firstString(defaultView, ["selectedGeneId"]) ?? "",
+      selectedTranscriptId: firstString(defaultView, ["selectedTranscriptId"]) ?? "",
+      locus: {
+        chrom: firstString(defaultLocus, ["chrom"]) ?? "",
+        start0: firstNumber(defaultLocus, ["start0"]) ?? -1,
+        end0: firstNumber(defaultLocus, ["end0"]) ?? -1,
+      },
+      expandedTranscriptIds: stringArray(defaultView.expandedTranscriptIds),
+    } : undefined,
     schemaVersion: firstString(record, ["schemaVersion", "schema_version"]),
     release: ensembl !== undefined && !release.toLowerCase().includes("ensembl")
       ? `${release} · Ensembl ${ensembl}`
       : release,
     gencodeRelease: release,
     ensemblRelease: ensembl,
-    assembly: firstString(record, ["assembly", "genomeBuild", "genome_build"]) ?? "GRCh38.p14",
+    assembly: declaredAssembly ?? "GRCh38.p14",
     buildHash,
     dataSource: "api",
     referenceAvailable,
     technicalPreview: firstBoolean(record, ["technicalPreview", "technical_preview"]) ?? false,
     featureSources: featureSources.length ? featureSources : [...FEATURE_SOURCES],
+    featureAvailability,
     capabilities,
+    ppiContext: ppiContext && ["loaded", "unavailable", "not_applicable"].includes(String(ppiContext.status))
+      ? ppiContext as unknown as BuildManifest["ppiContext"] : undefined,
     coordinateContract: coordinate ? {
       machine: firstString(coordinate, ["machine"]) ?? "0-based half-open",
       display: firstString(coordinate, ["display"]) ?? "1-based inclusive",
@@ -191,8 +252,65 @@ export function normalizeManifest(value: unknown): BuildManifest {
   };
 }
 
+export async function loadGenePPIContext(
+  geneId: string, manifest: BuildManifest, offset: number, evidence: "all" | "feature-linked", signal: AbortSignal,
+): Promise<GenePPIContext> {
+  const contextHash = manifest.ppiContext?.provenance?.contextHash ?? "not-declared";
+  const payload = await fetchJson<GenePPIContext>(
+    `/api/v1/genes/${encodeURIComponent(geneId)}/ppi-context?offset=${offset}&limit=12&evidence=${evidence}`,
+    signal, `${manifest.buildHash}:ppi:${contextHash}:${geneId}:${offset}:${evidence}`,
+  );
+  return validateGenePPIContext(payload, manifest, geneId, offset, evidence);
+}
+
+/** Also exercised with a checked synthetic response produced by the real backend. */
+export function validateGenePPIContext(
+  payload: GenePPIContext, manifest: BuildManifest, geneId: string, offset: number, evidence: "all" | "feature-linked",
+  expectedLimit = 12,
+): GenePPIContext {
+  const contextHash = manifest.ppiContext?.provenance?.contextHash ?? "not-declared";
+  if (payload.datasetId !== manifest.datasetId || payload.buildHash !== manifest.buildHash || payload.geneId !== geneId
+    || payload.predictionAvailable !== false || !Array.isArray(payload.records)
+    || payload.records.length > expectedLimit || !["loaded", "unavailable", "not_applicable"].includes(payload.status)
+    || payload.page?.offset !== offset || payload.page?.evidence !== evidence || payload.page?.limit !== expectedLimit
+    || payload.page.returned !== payload.records.length
+    || (payload.status === "loaded" && (payload.provenance?.contextHash !== contextHash
+      || payload.provenance?.species !== "human" || payload.provenance?.datasetId !== manifest.datasetId
+      || payload.provenance?.annotationBuildHash !== manifest.buildHash || payload.provenance.networkAnnotationReleaseMatched !== false
+      || !payload.counts || !Number.isInteger(payload.counts.records)))) {
+    throw new ApiError("The interaction context does not match this dataset and annotation build.", 500, "INVALID_PPI_CONTEXT");
+  }
+  for (const record of payload.records) {
+    const expectedEndpoint = record.geneA === geneId && record.geneB === geneId ? "A+B"
+      : record.geneA === geneId ? "A" : record.geneB === geneId ? "B" : undefined;
+    const expectedPartner = expectedEndpoint === "A" ? record.geneB : expectedEndpoint === "B" ? record.geneA : geneId;
+    if (!expectedEndpoint || record.focalEndpoint !== expectedEndpoint || record.partner?.id !== expectedPartner
+      || !record.ddi || !record.dmi || ![record.ddi.focalPfamAccessions, record.ddi.partnerPfamAccessions,
+        record.dmi.focalTokens, record.dmi.partnerTokens].every(tokens => Array.isArray(tokens)
+        && tokens.every(token => typeof token === "string" && token.length > 0 && token.length <= 512))) {
+      throw new ApiError("The interaction record has invalid endpoint ownership or identifiers.", 500, "INVALID_PPI_CONTEXT");
+    }
+  }
+  return payload;
+}
+
 export async function loadManifest(signal: AbortSignal): Promise<BuildManifest> {
-  return normalizeManifest(await fetchJson("/api/v1/manifest", signal));
+  const manifest = normalizeManifest(await fetchJson("/api/v1/manifest", signal));
+  selectApiDataset(manifest.datasetId ?? "human-gencode-v45");
+  return manifest;
+}
+
+export async function loadDatasetCatalog(signal: AbortSignal): Promise<DatasetCatalog> {
+  const payload = objectValue(await fetchJson("/api/v1/datasets", signal, undefined, false));
+  const defaultDatasetId = payload ? firstString(payload, ["defaultDatasetId"]) : undefined;
+  if (!defaultDatasetId || !Array.isArray(payload?.datasets)) throw new ApiError("The installed dataset catalog is invalid.", 500, "INVALID_DATASETS");
+  const datasets = payload.datasets.map((value) => {
+    const manifest = normalizeManifest(value);
+    if (!manifest.datasetId) throw new ApiError("An installed dataset has no identifier.", 500, "INVALID_DATASETS");
+    return { ...manifest, datasetId: manifest.datasetId, label: manifest.label ?? manifest.release };
+  });
+  if (!datasets.some((dataset) => dataset.datasetId === defaultDatasetId)) throw new ApiError("The default annotation dataset is not installed.", 500, "INVALID_DATASETS");
+  return { defaultDatasetId, datasets };
 }
 
 function normalizeSearchResult(value: unknown): SearchResult | null {
@@ -696,7 +814,7 @@ export async function createTranscriptPdf(
     60_000,
   );
   try {
-    const response = await fetch("/api/v1/report/pdf", {
+    const response = await fetch(datasetUrl("/api/v1/report/pdf"), {
       method: "POST",
       signal: controller.signal,
       headers: {

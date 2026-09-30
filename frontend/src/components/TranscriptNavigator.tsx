@@ -65,7 +65,7 @@ export function TranscriptNavigator({
           aria-describedby={statusId}
           autoComplete="off"
           spellCheck={false}
-          placeholder="Name, ENST, ENSP, or biotype"
+          placeholder="Name, transcript/protein ID, or biotype"
         />
       </label>
 

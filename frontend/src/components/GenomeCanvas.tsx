@@ -644,7 +644,7 @@ export function GenomeCanvas({
         </div>
       )}
       <div id="canvas-accessible-summary" className="sr-only">
-        <p>{gene.symbol} has {gene.transcripts.length} GENCODE v45 transcripts. The canvas is mirrored by transcript controls and the inspector feature table.</p>
+        <p>{gene.symbol} has {gene.transcripts.length} transcripts in the selected local annotation. The canvas is mirrored by transcript controls and the inspector feature table.</p>
         {selectedTranscript && (
           <ul>
             {selectedTranscript.exons

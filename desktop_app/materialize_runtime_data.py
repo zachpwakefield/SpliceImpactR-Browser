@@ -13,7 +13,7 @@ import sys
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from desktop_app.runtime_support import PACKAGE, canonical_json, file_sha256, read_manifest, safe_child, verify_files
+from desktop_app.runtime_support import canonical_json, dataset_packages, file_sha256, read_manifest, safe_child, verify_files
 
 
 def clone_verified(source: Path, destination: Path, metadata: dict) -> None:
@@ -36,8 +36,8 @@ def clone_verified(source: Path, destination: Path, metadata: dict) -> None:
     destination.chmod(0o444)
 
 
-def _materialize_reference(staging: Path, final: Path, manifest: dict) -> None:
-    reference = manifest.get("reference")
+def _materialize_reference(staging: Path, final: Path, manifest: dict, package: dict) -> None:
+    reference = package.get("reference")
     if reference is None:
         return
     directory = reference["directory"]
@@ -46,7 +46,7 @@ def _materialize_reference(staging: Path, final: Path, manifest: dict) -> None:
     declarations = {}
     records = []
     for key, public_name in reference["keys"].items():
-        relative = f"external-files/reference/{public_name}"
+        relative = f"{reference.get('externalDirectory', 'external-files/reference')}/{public_name}"
         metadata = manifest["externalFiles"][relative]
         cloned = safe_child(staging, relative)
         final_target = safe_child(final, relative)
@@ -59,7 +59,7 @@ def _materialize_reference(staging: Path, final: Path, manifest: dict) -> None:
         declaration = {"public_name": public_name, "link_path": public_name, "target_path": str(final_target), "sha256": metadata["sha256"], "size": metadata["size"]}
         declarations[key] = declaration
         records.append({**declaration, "path": public_name, "inode": stat.st_ino, "mtime_ns": stat.st_mtime_ns})
-    reference_manifest = {"assembly": "GRCh38.p14", "verified": True, "verification_receipt": "verification_receipt.json", **declarations}
+    reference_manifest = {"assembly": package["assembly"], "verified": True, "verification_receipt": "verification_receipt.json", **declarations}
     manifest_path = safe_child(reference_root, reference["manifestName"])
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_bytes(canonical_json(reference_manifest))
@@ -76,9 +76,19 @@ def verify_cached_runtime(root: Path, *, full_verify: bool = True) -> dict:
     verify_files(root, manifest["bundledFiles"])
     if full_verify:
         verify_files(root, manifest["externalFiles"])
-    app = create_app(project_root=root, full_database_verify=full_verify, full_reference_verify=full_verify)
+    app = create_app(project_root=root, full_database_verify=full_verify, full_reference_verify=full_verify, dataset=manifest.get("defaultDatasetId"))
     if app.state.runtime_package.build_hash != manifest["buildHash"]:
         raise ValueError("Installed annotation and runtime build identities differ.")
+    expected = {package["datasetId"]: package["buildHash"] for package in dataset_packages(manifest)}
+    actual = {identifier: context.package.build_hash for identifier, context in app.state.dataset_contexts.items()}
+    if actual != expected:
+        raise ValueError("Installed runtime dataset inventory or build identities differ.")
+    expected_ppi = {package["datasetId"]: (package.get("ppiContext") or {}).get("contextHash") for package in dataset_packages(manifest)}
+    actual_ppi = {identifier: context.package.ppi_context.manifest["context_hash"]
+                  if context.package.ppi_context is not None and context.package.ppi_context.available else None
+                  for identifier, context in app.state.dataset_contexts.items()}
+    if actual_ppi != expected_ppi:
+        raise ValueError("Installed interaction context is missing, invalid, or bound to another dataset/build.")
     return manifest
 
 
@@ -91,12 +101,20 @@ def materialize_runtime(project_root: Path, staging: Path, final: Path) -> dict:
         raise ValueError("Staging and final runtimes must be separate sibling locations.")
     manifest = read_manifest(staging)
     verify_files(staging, manifest["bundledFiles"])
-    database_source = Path(manifest["externalFiles"][f"{PACKAGE}/annotation.sqlite"]["source"])
-    if database_source.resolve() != (project_root.resolve() / PACKAGE / "annotation.sqlite").resolve():
-        raise ValueError("The runtime database source differs from this checkout; rebuild the app here.")
+    for package in dataset_packages(manifest):
+        relative = f"{package['packageDirectory']}/annotation.sqlite"
+        database_source = Path(manifest["externalFiles"][relative]["source"])
+        if database_source.resolve() != (project_root.resolve() / relative).resolve():
+            raise ValueError("The runtime database source differs from this checkout; rebuild the app here.")
+        if package.get("ppiContext"):
+            ppi_relative = f"{package['ppiContext']['directory']}/context.sqlite"
+            ppi_source = Path(manifest["externalFiles"][ppi_relative]["source"])
+            if ppi_source.resolve() != (project_root.resolve() / ppi_relative).resolve():
+                raise ValueError("The interaction context source differs from this checkout; rebuild the app here.")
     for relative, metadata in manifest["externalFiles"].items():
         clone_verified(Path(metadata["source"]), safe_child(staging, relative), metadata)
-    _materialize_reference(staging, final, manifest)
+    for package in dataset_packages(manifest):
+        _materialize_reference(staging, final, manifest, package)
     final.parent.mkdir(parents=True, exist_ok=True)
     os.rename(staging, final)
     try:

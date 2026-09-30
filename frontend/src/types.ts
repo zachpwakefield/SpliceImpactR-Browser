@@ -42,6 +42,7 @@ export type InspectorTab =
 
 export type DisplayMode = "overview" | "compact" | "labeled" | "expanded";
 export type DisplayModeSetting = "auto" | DisplayMode;
+export type ProteinExpansionDefault = "all" | "top" | "none";
 
 export interface Locus {
   chrom: string;
@@ -140,6 +141,7 @@ export interface Gene {
 }
 
 export interface BrowserViewState {
+  datasetId?: string;
   buildHash: string;
   selectedGeneId: string;
   locus: Locus;
@@ -147,6 +149,10 @@ export interface BrowserViewState {
   comparisonTranscriptId: string;
   transcriptOrderIds: string[];
   expandedTranscriptIds: string[];
+  /** Compact All mode; feature retrieval remains limited to visible rows. */
+  expandAllProteins?: boolean;
+  /** Per-row disclosure overrides while All mode is active. */
+  collapsedProteinTranscriptIds?: string[];
   pinnedTranscriptIds: string[];
   activeSources: FeatureSource[];
   activeFeatureClasses: FeatureClass[];
@@ -160,6 +166,10 @@ export interface BrowserViewState {
 }
 
 export interface BuildManifest {
+  datasetId?: string;
+  species?: "human" | "mouse";
+  label?: string;
+  defaultView?: Pick<BrowserViewState, "selectedGeneId" | "selectedTranscriptId" | "locus"> & { expandedTranscriptIds?: string[] };
   schemaVersion?: string;
   release: string;
   gencodeRelease?: string;
@@ -170,6 +180,13 @@ export interface BuildManifest {
   referenceAvailable: boolean;
   technicalPreview: boolean;
   featureSources: FeatureSource[];
+  featureAvailability?: Partial<Record<FeatureSource, { status: "available" | "available-empty" | "unavailable"; reason?: string; recordCount?: number }>>;
+  ppiContext?: {
+    status: "loaded" | "unavailable" | "not_applicable";
+    reason?: string;
+    predictionAvailable?: false;
+    provenance?: PPIContextProvenance;
+  };
   capabilities: Record<string, boolean>;
   coordinateContract?: { machine: string; display: string };
   reference?: {
@@ -180,6 +197,55 @@ export interface BuildManifest {
     faiUrl?: string;
     chromSizesUrl?: string;
   };
+}
+
+export interface PPIContextProvenance {
+  kind: "gene-level-interaction-context";
+  source: string;
+  packageVersion: string;
+  dataSha256: string;
+  contextHash: string;
+  datasetId: string;
+  annotationBuildHash: string;
+  species: "human";
+  networkAnnotationReleaseMatched: false;
+  networkRelease?: null;
+  networkDate?: null;
+}
+
+export interface PPIContextRecord {
+  recordId: string | number;
+  geneA: string;
+  geneB: string;
+  partner: { id: string; symbol: string; availableInDataset: boolean };
+  focalEndpoint: "A" | "B" | "A+B";
+  selfInteraction: boolean;
+  biogrid: boolean;
+  ddi: { flag: boolean; focalPfamAccessions: string[]; partnerPfamAccessions: string[] };
+  dmi: { flag: boolean; focalTokens: string[]; partnerTokens: string[] };
+}
+
+export interface GenePPIContext {
+  datasetId: string;
+  buildHash: string;
+  geneId: string;
+  status: "loaded" | "unavailable" | "not_applicable";
+  reason?: string;
+  predictionAvailable: false;
+  counts: null | { records: number; allRecords: number; partnerGenes: number; biogridRecords: number; ddiRecords: number; dmiRecords: number };
+  page: { offset: number; limit: number; returned: number; hasMore: boolean; nextOffset: number | null; evidence: "all" | "feature-linked" };
+  records: PPIContextRecord[];
+  provenance?: PPIContextProvenance;
+}
+
+export interface InstalledDataset extends Pick<BuildManifest, "datasetId" | "label" | "species" | "gencodeRelease" | "ensemblRelease" | "assembly" | "buildHash" | "technicalPreview" | "capabilities" | "defaultView"> {
+  datasetId: string;
+  label: string;
+}
+
+export interface DatasetCatalog {
+  defaultDatasetId: string;
+  datasets: InstalledDataset[];
 }
 
 export type SearchEntityKind = "gene" | "transcript" | "protein" | "exon" | "coordinate";

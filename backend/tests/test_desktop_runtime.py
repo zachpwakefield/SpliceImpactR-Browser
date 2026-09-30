@@ -10,9 +10,13 @@ from fastapi.testclient import TestClient
 
 from backend.app.main import create_app
 from backend.tests.test_api import make_package, write_manifest
+from backend.tests.test_datasets import synthetic_dataset
+from backend.app.package import load_runtime_package
+from backend.builder.ppi_context import build_ppi_context
+from tests.data.test_ppi_context_build import write_export
 from desktop_app.materialize_runtime_data import materialize_runtime, verify_cached_runtime
 from desktop_app.package_runtime import build_runtime
-from desktop_app.runtime_support import PACKAGE, canonical_json, file_sha256, runtime_version, safe_child, validate_manifest
+from desktop_app.runtime_support import PACKAGE, canonical_json, dataset_packages, file_sha256, runtime_version, safe_child, validate_manifest
 
 
 class DesktopRuntimeTests(unittest.TestCase):
@@ -28,6 +32,8 @@ class DesktopRuntimeTests(unittest.TestCase):
             "THIRD_PARTY_NOTICES.md": "Synthetic dependency-notice fixture\n",
             "backend/__init__.py": "",
             "backend/app/cli.py": "# packaged fixture entry point\n",
+            "backend/datasets.py": "# synthetic packaged profile loader\n",
+            "backend/data/dataset_profiles.json": "{\"schema\":\"synthetic-test-only\"}\n",
             "frontend/dist/index.html": "<html><body>local fixture</body></html>\n",
             "fake-dependencies/uvicorn/__init__.py": "# fixture dependency\n",
             "fake-dependencies/uvicorn/__pycache__/ignored.pyc": "not bundled\n",
@@ -83,6 +89,8 @@ class DesktopRuntimeTests(unittest.TestCase):
             with zipfile.ZipFile(archive) as source:
                 names = source.namelist()
                 self.assertIn("backend/app/cli.py", names)
+                self.assertIn("backend/datasets.py", names)
+                self.assertIn("backend/data/dataset_profiles.json", names)
                 self.assertIn("frontend/dist/index.html", names)
                 self.assertIn("LICENSE", names)
                 self.assertIn("THIRD_PARTY_NOTICES.md", names)
@@ -177,6 +185,101 @@ class DesktopRuntimeTests(unittest.TestCase):
             _, _, _, manifest = self.bundle(Path(temp))
             manifest["buildHash"] = "changed identity"
             with self.assertRaisesRegex(ValueError, "content identity"):
+                validate_manifest(manifest)
+
+    def test_multiple_datasets_are_packaged_and_materialized_with_the_selected_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root, dependencies = self.project(base, reference=True)
+            for identifier in ("human-gencode-v50", "mouse-gencode-m39"):
+                synthetic_dataset(root, identifier)
+            archive = base / "app/Runtime.zip"
+            manifest = build_runtime(root, archive, site_packages=dependencies, dataset="mouse-gencode-m39")
+            self.assertEqual(manifest["defaultDatasetId"], "mouse-gencode-m39")
+            self.assertEqual(len(dataset_packages(manifest)), 3)
+            self.assertEqual(manifest["buildHash"], "mouse-gencode-m39-fixture-hash")
+            staging, final = base / "stage", base / "final"
+            with zipfile.ZipFile(archive) as source:
+                source.extractall(staging)
+                self.assertFalse(any(name.endswith(".sqlite") for name in source.namelist()))
+            materialize_runtime(root, staging, final)
+            verified = verify_cached_runtime(final)
+            self.assertEqual(verified["defaultDatasetId"], "mouse-gencode-m39")
+            client = TestClient(create_app(project_root=final, dataset=verified["defaultDatasetId"]), base_url="http://127.0.0.1")
+            self.assertEqual(client.get("/api/v1/manifest").json()["species"], "mouse")
+            self.assertEqual(len(client.get("/api/v1/datasets").json()["datasets"]), 3)
+            self.assertEqual(client.get("/reference/genome.fa?dataset=human-gencode-v45", headers={"Range": "bytes=7-10"}).content, b"ACGT")
+            self.assertEqual(client.get("/reference/genome.fa?dataset=mouse-gencode-m39").status_code, 404)
+            for declaration in manifest["datasetPackages"]:
+                self.assertTrue((final / declaration["packageDirectory"] / "annotation.sqlite").is_file())
+
+    def test_legacy_single_v45_runtime_declaration_remains_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root, staging, final, manifest = self.bundle(Path(temp), reference=True)
+            manifest["reference"] = manifest.pop("datasetPackages")[0]["reference"]
+            manifest.pop("defaultDatasetId")
+            manifest["runtimeVersion"] = runtime_version(manifest)
+            (staging / "runtime-manifest.json").write_bytes(canonical_json(manifest))
+            validate_manifest(manifest)
+            materialize_runtime(root, staging, final)
+            self.assertEqual(verify_cached_runtime(final)["buildHash"], manifest["buildHash"])
+
+    def test_optional_ppi_context_is_privately_cloned_and_bound_without_changing_annotation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root, dependencies = self.project(base)
+            package = load_runtime_package(root / PACKAGE, dev_fixture=False)
+            source = base / "ppi-export"
+            write_export(source, package)
+            ppi_root = root / "data/ppi_context/human-gencode-v45"
+            ppi_manifest = build_ppi_context(source, package, ppi_root)
+            original_paths = [root / PACKAGE / "annotation.sqlite", root / PACKAGE / "manifest.json", ppi_root / "context.sqlite", ppi_root / "manifest.json"]
+            before = {str(path): (file_sha256(path), path.stat().st_mode) for path in original_paths}
+            archive = base / "app/Runtime.zip"
+            manifest = build_runtime(root, archive, site_packages=dependencies)
+            self.assertEqual(manifest["datasetPackages"][0]["ppiContext"]["contextHash"], ppi_manifest["context_hash"])
+            staging, final = base / "stage", base / "final"
+            with zipfile.ZipFile(archive) as zipped:
+                self.assertIn("data/ppi_context/human-gencode-v45/manifest.json", zipped.namelist())
+                self.assertFalse(any(name.endswith(".sqlite") for name in zipped.namelist()))
+                self.assertFalse(any(name.endswith(".ndjson") for name in zipped.namelist()))
+                zipped.extractall(staging)
+            materialize_runtime(root, staging, final)
+            verify_cached_runtime(final)
+            cloned = final / "data/ppi_context/human-gencode-v45/context.sqlite"
+            self.assertNotEqual(cloned.stat().st_ino, (ppi_root / "context.sqlite").stat().st_ino)
+            self.assertFalse(cloned.is_symlink())
+            self.assertEqual(before, {str(path): (file_sha256(path), path.stat().st_mode) for path in original_paths})
+            client = TestClient(create_app(project_root=final), base_url="http://127.0.0.1")
+            self.assertTrue(client.get("/api/v1/manifest").json()["capabilities"]["ppiContext"])
+            self.assertFalse(client.get("/api/v1/manifest").json()["capabilities"]["ppiPredictions"])
+            (final / "data/ppi_context/human-gencode-v45/manifest.json").chmod(0o644)
+            (final / "data/ppi_context/human-gencode-v45/manifest.json").write_text("{}")
+            with self.assertRaises(ValueError):
+                verify_cached_runtime(final)
+
+    def test_runtime_ppi_declaration_rejects_foreign_dataset_or_missing_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            _, _, _, original = self.bundle(Path(temp))
+            for declaration in ({"directory": "data/ppi_context/human-gencode-v50", "contextHash": "a" * 64},
+                {"directory": "data/ppi_context/human-gencode-v45", "contextHash": "a" * 64}):
+                manifest = json.loads(json.dumps(original))
+                manifest["datasetPackages"][0]["ppiContext"] = declaration
+                manifest["runtimeVersion"] = runtime_version(manifest)
+                with self.assertRaisesRegex(ValueError, "interaction context"):
+                    validate_manifest(manifest)
+
+    def test_runtime_dataset_duplicate_and_default_mismatch_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            _, _, _, manifest = self.bundle(Path(temp))
+            manifest["datasetPackages"].append(dict(manifest["datasetPackages"][0]))
+            manifest["runtimeVersion"] = runtime_version(manifest)
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                validate_manifest(manifest)
+            manifest["datasetPackages"].pop()
+            manifest["defaultDatasetId"] = "mouse-gencode-m39"
+            manifest["runtimeVersion"] = runtime_version(manifest)
+            with self.assertRaisesRegex(ValueError, "default dataset"):
                 validate_manifest(manifest)
             manifest["runtimeVersion"] = runtime_version(manifest)
             manifest["externalFiles"]["../escaped.sqlite"] = next(iter(manifest["externalFiles"].values()))

@@ -1,6 +1,13 @@
-# Local Transcript Browser
+# SpliceImpactR Browser
 
-An offline-first genome/transcript browser for GENCODE v45 transcript structure and exon-aware protein features. It is designed for fast local inspection of genes and isoforms without depending on a hosted Ensembl session.
+An offline-first genome/transcript browser powered by the public Bioconductor SpliceImpactR package, for human and mouse GENCODE transcript structure and exon-aware protein features. Human v45 remains the default; human v50 and mouse M39 are separate, release-matched datasets.
+
+This is an independent local browser interface, not a distribution of
+SpliceImpactR itself. The browser source and upstream package retain their
+separate licenses.
+
+Previously named Transcript Browser. Existing data builds, saved sessions and
+workspace storage remain compatible; the GitHub repository URL is unchanged.
 
 This repository contains the browser source, deterministic SQLite builder, tests, documentation, and the adapter that prepares inputs with the Bioconductor SpliceImpactR package. It does **not** contain scientific data products or third-party package source: the GTF, FASTA files, RDS feature tables, SQLite database, reference index, virtual environments, frontend dependencies, desktop bundles, local notes, logs, credentials, or machine-specific receipts are generated or supplied locally.
 
@@ -25,20 +32,23 @@ The browser combines a genome-browser-style locus view with transcript and prote
 | Area | Functionality |
 | --- | --- |
 | Search | Exact or prefix search for gene symbols, Ensembl gene/transcript/protein IDs, transcript names, exon identifiers, and genomic coordinates. Ambiguous symbols are presented for explicit selection rather than guessed. |
+| Genome annotation | Choose an installed human/mouse annotation in the toolbar. Each tab keeps its own species, GENCODE release, paired Ensembl features, assembly, and immutable build. |
 | Locus navigation | Zoom, pan, ruler selection, fit-to-gene/transcript, chromosome labels, packed broad-locus overview, transcript detail thresholds, and a dense-gene minimap. Pointer, keyboard, trackpad, and keyboard-focus interactions are supported. |
 | Transcript models | GENCODE gene/transcript/exon/CDS/UTR/start-codon/stop-codon geometry, strand and phase, versioned identifiers, transcript biotypes, canonical/MANE/APPRIS/Basic/CCDS flags, and stable transcript labels. |
 | Protein features | Expand a transcript to reveal protein-domain and motif lanes. InterPro, Pfam, CDD, TMHMM, SignalP, MobiDB-lite, and ELM remain separately filterable and are never silently reclassified. |
 | Exon-aware projection | Amino-acid intervals are mapped through CDS pieces. A domain crossing an intron appears as separate exon-confined genomic segments plus an independent continuous N-to-C protein lane. |
-| Comparison | Keep up to 25 protein rows expanded, reorder visible transcripts with accessible controls, compare two isoforms, pin context, and preserve the visual order in bounded exports. |
+| Comparison | Choose All/Top/None default protein tracks (All loads lazily), keep up to 25 manually expanded rows, reorder transcripts, compare two isoforms, pin context, and preserve visual order in bounded exports. |
 | Inspection/export | Cross-highlight feature segments, inspect tables and sequences, export JSON/TSV/CSV, and create bounded selectable-text/vector PDF reports with exact coordinate and sequence labels. |
-| Local workspace | Build-scoped recents, favorites, notes, tags, URL state, session export/import, keyboard shortcuts, and diagnostic receipts are stored locally and remain separate from scientific annotation evidence. |
+| Local workspace | Dataset/build-scoped recents, favorites, notes, tags, URL state, session export/import, keyboard shortcuts, and diagnostic receipts are stored locally and remain separate from scientific annotation evidence. |
 | Runtime | A read-only FastAPI service and React/TypeScript frontend run on loopback. After the data build, normal use is offline: no CDN, remote font, hosted registry, telemetry, permissive CORS, or runtime annotation fallback. |
 
 The interface intentionally follows the useful genome-browser ideas users expect from Ensembl, IGV, and UCSC, but uses one shared local layout model for accessible controls, Canvas rendering, hit testing, scrolling, and protein-row geometry. This avoids the synchronization problems that can arise when several independent renderers own the same transcript rows.
 
 ## Example screenshots
 
-These examples are captured from the small SP1 acceptance fixture used during development. They demonstrate the interface and interaction model only; the fixture is not a substitute for a prepared GENCODE v45 build and is not included as scientific data in this source-only repository.
+These screenshots show SpliceImpactR Browser using a complete human v45 build
+and its separately prepared public interaction context. They demonstrate the
+interface; scientific datasets are not bundled in this source-only repository.
 
 ### Expanded protein-feature track
 
@@ -48,9 +58,25 @@ Expanding a transcript adds exon-confined genomic feature segments and an indepe
 
 ### Transcript comparison
 
-The comparison inspector makes isoform differences explicit, including transcript/CDS/protein lengths, annotation flags, and per-source feature counts. “Different” is written in the table rather than communicated by color alone.
+The comparison inspector shows actual protein-feature calls, not just counts:
+names/accessions, source/method, and exact amino-acid ranges for both isoforms.
+It distinguishes one-sided observations, call-count differences, coordinate
+differences, and shared calls. Repeated calls remain independent; a shifted AA
+range is not called a domain gain/loss. Click a range to inspect its record, or
+export the complete feature comparison with dataset provenance. Structural
+metrics and scientific annotation tags remain available below.
 
-![SP1-201 versus SP1-202 transcript comparison inspector](docs/assets/sp1-transcript-comparison.jpg)
+![SP1-201 versus SP1-204 showing actual accession-specific protein feature calls and amino-acid ranges](docs/assets/sp1-feature-call-comparison.jpg)
+
+### Human interaction context
+
+Compare also shows recorded gene partners and whether each isoform has the
+exact feature identifier listed on the focal gene's side of the interaction
+resource. Partner-side requirements stay separate. Observed and not-observed
+annotations are not interaction gain/loss predictions; resource provenance
+and unassessed evidence remain visible.
+
+![SP1 interaction context comparing Pfam annotation observations in SP1-201 and SP1-204, with the focal gene correctly identified as endpoint B](docs/assets/sp1-ppi-context.jpg)
 
 ### Protein sequence inspection
 
@@ -119,7 +145,8 @@ for later runs; the source ZIP does not include prepared data or dependencies.
 
 The validated unfiltered SQLite database is about 3.33 GB, in addition to
 dependencies and caches. Rebuilding temporarily needs room for both the old
-and new database.
+and new database. That size describes v45 only; newer releases require more
+preparation memory, time, and disk space.
 If no existing R package library is writable, the installer creates R's
 configured personal library. Set `R_LIBS_USER` before setup to choose an
 isolated library; subsequent preparation/build commands must use the same
@@ -169,41 +196,72 @@ outputs are reused only when their input signature and file digest match;
 `--force` refreshes queries deliberately. Old filtered/unreceipted outputs are
 regenerated. The browser does not download annotation data at runtime.
 
+### Choose human v50 or mouse M39
+
+Build only the datasets you need; setup leaves existing datasets unchanged:
+
+```bash
+./scripts/setup_local.sh --dataset human-gencode-v50
+./scripts/setup_local.sh --dataset mouse-gencode-m39
+```
+
+After preparation, the **Genome annotation** selector lists all installed,
+validated datasets. Use `./run_local.sh --dataset mouse-gencode-m39` to start
+with a particular default.
+
+| Dataset ID | Species | GENCODE | Paired Ensembl | Assembly |
+| --- | --- | --- | --- | --- |
+| `human-gencode-v45` | Human | v45 | 111 | GRCh38.p14 |
+| `human-gencode-v50` | Human | v50 | 116 | GRCh38.p14 |
+| `mouse-gencode-m39` | Mouse | M39 | 116 | GRCm39 |
+
+These are reviewed profiles, not arbitrary release guesses. See
+[genome datasets and release validation](docs/genome_datasets.md) for cache
+locations, existing-file input, tab isolation, and adding another release.
+Full local installation evidence currently covers v45. The v50/M39 raw inputs
+and dataset contracts have been verified, but their full preparation/build gates
+remain open; the pinned Ensembl 116 archive was intermittently unavailable during
+the audit. See [validation evidence](docs/setup_validation.md).
+
 ## How SpliceImpactR feeds the browser
 
 The data flow is deliberately explicit:
 
 ```text
-Unmodified GENCODE v45 GTF + transcript/protein FASTA
+Selected profile's unmodified GENCODE GTF + transcript/protein FASTA
   └─ complete-model adapter (no annotation filters)
           + SpliceImpactR (released Bioconductor package)
-              ├─ Ensembl 111 BioMart protein features
+              ├─ species/release-matched BioMart protein features
               └─ ELM linear motifs
           │
           ▼
-data/cache/*.rds + raw GENCODE .gz files
+dataset-specific *.rds + raw GENCODE .gz files
           │
           ▼
-streaming Python builder + optional GRCh38.p14 reference
+streaming Python builder + optional assembly-matched reference
           │
           ▼
-validated immutable data/builds/gencode_v45/annotation.sqlite
+validated immutable data/builds/<dataset-package>/annotation.sqlite
           │
           ▼
 loopback API + React/Canvas browser
 ```
 
-`scripts/prepare_spliceimpactr_cache.R` downloads official raw assets through
-BiocFileCache and reads the complete GTF with public `rtracklayer` readers. Its
-release-pinned adapter queries the Ensembl 111 BioMart through public `biomaRt`
+`scripts/prepare_spliceimpactr_cache.R` uses SpliceImpactR's public
+`get_annotation(species, release, load="link")` accession capability when raw
+assets are absent, resolves its original downloads through public BiocFileCache
+metadata, and verifies official filenames/checksums. Verified raw inputs are
+reused. It reads the complete GTF with public `rtracklayer` readers. Its
+release-pinned adapter queries the profile's species/Ensembl release through public `biomaRt`
 APIs and processes the results with SpliceImpactR's public `get_manual_features()`
 API; ELM instances are matched to the supplied protein sequences. It deliberately does **not**
-call `get_annotation()`: that analysis-oriented API defaults to TSL 1–3 and
+use the processed `get_annotation()` object as the catalog: that analysis-oriented API defaults to TSL 1–3 and
 excludes incomplete CDS models, and its TSL options do not provide an unscored
 transcript mode. No private package functions or package source are vendored.
 
-The browser preserves **all 252,930 transcript models and 63,187 genes** in the
-pinned GTF, including TSL 4/5, unscored transcripts, every biotype, and incomplete
+The browser preserves every raw model: **252,930 transcripts/63,187 genes in
+v45; 644,292 transcripts/78,733 genes in v50**, including TSL 4/5, unscored
+transcripts, every biotype, and incomplete
 CDS tags. TSL and annotation flags are metadata, not import filters. Dense-locus
 rendering is bounded/virtualized for speed; that does not delete transcripts
 from the searchable catalog.
@@ -211,7 +269,7 @@ from the searchable catalog.
 Feature coverage is a separate question. SpliceImpactR 1.0.0's own remote helper
 uses a `protein_coding` query and automatic archive discovery. The browser's
 public-API adapter avoids those restrictions: it uses the verified
-[Ensembl 111 archive](https://jan2024.archive.ensembl.org) and no TSL/biotype
+profile-matched archive/species mart and no TSL/biotype
 selector. ELM still requires a mapped, sequence-confirmed instance. A missing protein sequence, unavailable feature, or
 non-exact CDS mapping does not remove its transcript model. Partial mappings
 remain labeled and are not drawn as exact genomic feature projections.
@@ -221,12 +279,15 @@ archive-list discovery. It does not patch installed packages or switch to
 another annotation release. SpliceImpactR still provides feature normalization
 and the optional exon audit. Its 1.0.0 manual-feature bounding labels have a
 minus-strand defect, so those labels are omitted; exact genomic geometry comes
-only from the independently verified raw-GTF builder.
+only from the independently verified raw-GTF builder. The released helpers also
+clip amino-acid intervals and collapse coincident accessions; this adapter
+preserves original source intervals and distinct IDs so invalid ranges are
+rejected or flagged, never made artificially exact.
 
 In GENCODE v45, PGK1 has six source transcripts, including a TSL 5 and an unscored
 model. A current Ensembl page showing more PGK1 isoforms is a different annotation
 catalog/release—not a reason to synthesize missing v45 models. Upgrading the
-catalog requires a coordinated release-contract change.
+v50 profile supplies the actual 44 PGK1 source models without modifying v45.
 
 Preparation writes one normalized RDS per source, optional exon-level audit
 data, and a relative-path manifest with complete transcript inventory, policy,
@@ -238,11 +299,52 @@ old RDS serialization. Changing features changes the build identity.
 
 | Input | Release | Why it matters |
 | --- | --- | --- |
-| Gene/transcript/protein assets | GENCODE human v45 | Defines the transcript models and sequence records shown by the browser. |
-| BioMart protein features | Ensembl release 111 | Release paired with GENCODE v45 in this browser contract. |
-| Optional reference FASTA | Ensembl release 115, GRCh38.p14 | Enables verified byte-range reference serving when supplied; it is not required for transcript/protein browsing. |
+| Gene/transcript/protein assets | Selected reviewed GENCODE profile | Defines every transcript model and sequence record shown by that dataset. |
+| BioMart protein features | Profile's paired Ensembl release and species | Actual registry and assembly are verified before querying. |
+| Optional reference FASTA | Separately checksum-pinned, assembly-compatible | Current adapter supports the verified Ensembl 115 GRCh38.p14 files for either human profile. Mouse reference setup is not yet supported; no reference is required for transcript/protein browsing. |
 
 Do not mix releases casually. If a new annotation release is desired, treat it as a new scientific build: update the release contract, expected counts/checksums, tests, and review notes together.
+
+Optional human **PPI context** in Compare uses the public
+`SpliceImpactR::get_ppi_interactions()` resource: recorded gene partners,
+BioGRID/DDI/DMI context, and exact focal-side feature observations in each
+isoform. These are not gained/lost-interaction predictions or confidence scores.
+Human interaction data is never applied to mouse. The static network's date and
+Ensembl-release correspondence are not independently known; its package/data
+SHA-256 are separate from the exact annotation-build binding.
+
+Interaction-switch predictions remain disabled: the published
+`get_ppi_switches()` method can treat a domain listed on the partner side of
+an interaction as a driver of change on the focal side. This is an interaction
+attribution issue, not a finding that transcript-domain records or GTF models
+are misassigned. The browser does not patch or vendor SpliceImpactR to bypass it.
+
+### Optional human PPI context
+
+After building a human dataset and installing the public Bioconductor package:
+
+```bash
+Rscript scripts/export_ppi_context.R \
+  --dataset human-gencode-v45 \
+  --annotation-manifest data/builds/gencode_v45/manifest.json \
+  --output data/cache/ppi_export_human_v45
+
+.venv/bin/python -m backend.builder.ppi_context \
+  --dataset human-gencode-v45 \
+  --source data/cache/ppi_export_human_v45
+```
+
+Restart the server afterward: a running server keeps its validated context
+inventory immutable. Dataset selection is resolved independently per request.
+Build a new Mac runtime to include this optional context. Neither
+command modifies the annotation database/manifest. The importer refuses an
+existing sidecar instead of replacing it. Use the selected profile's build
+directory and ID for another human dataset; mouse export/import is refused.
+
+Generated context lives in `data/ppi_context/<dataset-id>/`, is ignored by Git,
+and is bound to the exact annotation build. No interaction dataset is included
+in the repository. SpliceImpactR and the underlying scientific resources keep
+their own licenses/data terms; the browser MIT license does not relicense them.
 
 ### Preparation commands
 
@@ -416,7 +518,7 @@ r/                           complete-model adapter, R preflight/export helpers
 scripts/                     data preparation, build, audit, benchmark helpers
 spliceimpactr/README.md       Bioconductor dependency notes
 docs/                        data, architecture, coordinate, review, and release docs
-docs/assets/                 static README screenshots from the SP1 UI acceptance fixture
+docs/assets/                 static README screenshots from fixture and full-v45 UI checks
 desktop_app/                 optional macOS launcher and installer
 data/builds/                 generated local builds only; ignored by Git
 ```

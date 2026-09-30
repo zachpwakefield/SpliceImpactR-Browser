@@ -32,19 +32,23 @@ class PublicationAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             subprocess.run(["git", "init", "-q", str(root)], check=True)
-            (root / ".gitignore").write_text("/data/cache/\n", encoding="utf-8")
+            (root / ".gitignore").write_text("/data/cache/\n/*.rds\n", encoding="utf-8")
             (root / "README.md").write_text("Public setup instructions\n", encoding="utf-8")
             generated = root / "data" / "cache" / "interpro.rds"
             generated.parent.mkdir(parents=True)
             generated.write_bytes(b"synthetic generated input")
+            scratch = root / "scratch.rds"
+            scratch.write_bytes(b"synthetic root-level scratch input")
             with patch.object(audit, "ROOT", root), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(audit.main(), 0)
                 self.assertNotIn(generated, audit.iter_files())
-            subprocess.run(["git", "add", "-f", "data/cache/interpro.rds"], cwd=root, check=True)
+                self.assertNotIn(scratch, audit.iter_files())
+            subprocess.run(["git", "add", "-f", "data/cache/interpro.rds", "scratch.rds"], cwd=root, check=True)
             error = io.StringIO()
             with patch.object(audit, "ROOT", root), contextlib.redirect_stderr(error):
                 self.assertEqual(audit.main(), 1)
             self.assertIn("generated/local artifact", error.getvalue())
+            self.assertIn("generated scientific input: scratch.rds", error.getvalue())
 
     def test_private_paths_and_credentials_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

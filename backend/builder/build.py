@@ -1,4 +1,4 @@
-"""Command-line deterministic GENCODE v45 annotation builder.
+"""Command-line deterministic, dataset-scoped GENCODE annotation builder.
 
 The SP1 scope is a vertical acceptance fixture built from the authoritative raw
 GTF and FASTAs. The full scope uses the same streaming path. A checksum-pinned
@@ -30,24 +30,19 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterator
 
+from backend.datasets import DatasetProfile, get_dataset_profile
+
 from .constants import (
     ASSEMBLY,
     BUILDER_VERSION,
     DENSITY_TILE_SIZES,
-    ENSEMBL_RELEASE,
-    EXPECTED_GTF_FEATURE_ROWS,
-    EXPECTED_GTF_TOTAL_ROWS,
-    EXPECTED_PC_TRANSCRIPT_FASTA_RECORDS,
-    EXPECTED_PC_TRANSLATION_FASTA_RECORDS,
     FEATURE_SOURCES,
-    GENCODE_RELEASE,
     OFFICIAL_GENCODE_PRIMARY_GENOME_GZ_MD5,
     PRIMARY_CONTIG_LENGTHS,
     PREPARATION_MANIFEST,
     REFERENCE_FASTA_SHA256,
     REFERENCE_FAI_SHA256,
     REFERENCE_PROVENANCE,
-    REQUIRED_INPUTS,
     SCHEMA_VERSION,
     fasta_contig_name,
 )
@@ -125,14 +120,15 @@ def build_lock(output_root: Path) -> Iterator[None]:
         os.close(descriptor)
 
 
-def validate_source_inputs(source: Path, preparation: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
-    preparation = preparation if preparation is not None else read_preparation_manifest(source)
+def validate_source_inputs(source: Path, preparation: dict[str, Any] | None = None, profile: DatasetProfile | None = None) -> dict[str, dict[str, Any]]:
+    profile = profile or get_dataset_profile()
+    preparation = preparation if preparation is not None else read_preparation_manifest(source, profile)
     results: dict[str, dict[str, Any]] = {}
-    missing = [name for name in [*REQUIRED_INPUTS, *FEATURE_SOURCES.values()] if not (source / name).is_file()]
+    missing = [name for name in [*profile.required_inputs, *FEATURE_SOURCES.values()] if not (source / name).is_file()]
     if missing:
         raise BuildError(f"Missing annotation inputs: {', '.join(missing)}")
 
-    for filename, expected_md5 in REQUIRED_INPUTS.items():
+    for filename, expected_md5 in profile.required_inputs.items():
         path = source / filename
         actual_md5 = file_digest(path, "md5")
         if actual_md5 != expected_md5:
@@ -219,9 +215,12 @@ def parse_fai(path: Path) -> dict[str, int]:
     return contigs
 
 
-def validate_reference(reference_fasta: Path | None) -> dict[str, Any] | None:
+def validate_reference(reference_fasta: Path | None, profile: DatasetProfile | None = None) -> dict[str, Any] | None:
     if reference_fasta is None:
         return None
+    profile = profile or get_dataset_profile()
+    if profile["assembly"] != ASSEMBLY:
+        raise BuildError(f"Optional whole-genome reference checksum profile is not yet available for {profile['assembly']}; transcript/protein browsing does not require one")
     reference_fasta = reference_fasta.resolve()
     reference_fai = Path(f"{reference_fasta}.fai")
     if not reference_fasta.is_file() or not reference_fai.is_file():
@@ -242,7 +241,7 @@ def validate_reference(reference_fasta: Path | None) -> dict[str, Any] | None:
 
     fai_contigs = parse_fai(reference_fai)
     length_errors = []
-    for canonical_name, expected_length in PRIMARY_CONTIG_LENGTHS.items():
+    for canonical_name, expected_length in profile.contigs.items():
         fasta_name = fasta_contig_name(canonical_name)
         actual_length = fai_contigs.get(fasta_name)
         if actual_length != expected_length:
@@ -384,8 +383,9 @@ def write_reference_package(
     return manifest
 
 
-def insert_contigs(connection: sqlite3.Connection) -> None:
-    for order, (name, length) in enumerate(PRIMARY_CONTIG_LENGTHS.items(), start=1):
+def insert_contigs(connection: sqlite3.Connection, profile: DatasetProfile | None = None) -> None:
+    profile = profile or get_dataset_profile()
+    for order, (name, length) in enumerate(profile.contigs.items(), start=1):
         fasta_name = fasta_contig_name(name)
         connection.execute(
             "INSERT INTO contig(name,length,display_order,is_primary,fasta_name) VALUES(?,?,?,?,?)",
@@ -406,8 +406,9 @@ def _phase(value: str) -> int | None:
 
 
 def ingest_gtf(
-    connection: sqlite3.Connection, path: Path, scope: str
+    connection: sqlite3.Connection, path: Path, scope: str, profile: DatasetProfile | None = None
 ) -> dict[str, Any]:
+    profile = profile or get_dataset_profile()
     selected_counts: Counter[str] = Counter()
     header: list[str] = []
     seen_contigs: set[str] = set()
@@ -428,11 +429,11 @@ def ingest_gtf(
             attributes = parse_gtf_attributes(raw_attrs)
             if scope == "sp1" and first(attributes, "gene_name") != "SP1":
                 continue
-            if contig not in PRIMARY_CONTIG_LENGTHS:
+            if contig not in profile.contigs:
                 raise BuildError(f"Unexpected GTF contig {contig!r}")
             start0 = int(start_text) - 1
             end0 = int(end_text)
-            if end0 > PRIMARY_CONTIG_LENGTHS[contig]:
+            if start0 < 0 or end0 <= start0 or end0 > profile.contigs[contig]:
                 raise BuildError(f"GTF interval exceeds {contig} length")
             seen_contigs.add(contig)
             selected_counts[feature_type] += 1
@@ -442,6 +443,9 @@ def ingest_gtf(
                 first(attributes, "transcript_id")
             )
             exon_base, exon_version, exon_versioned = split_versioned_id(first(attributes, "exon_id"))
+            for kind, identifier in (("gene", gene_base), ("transcript", transcript_base), ("exon", exon_base)):
+                if identifier is not None and not identifier.startswith(profile["identifier_prefixes"][kind]):
+                    raise BuildError(f"GTF {kind} identifier {identifier!r} does not match selected species {profile['species']}")
             tags = attributes.get("tag", [])
             level_text = first(attributes, "level")
             level = int(level_text) if level_text and level_text.isdigit() else None
@@ -596,23 +600,24 @@ def ingest_gtf(
             f"SP1 source-of-truth failure: expected 1 gene/4 transcripts, got "
             f"{gene_count}/{transcript_count}"
         )
-    if scope == "full" and seen_contigs != set(PRIMARY_CONTIG_LENGTHS):
-        raise BuildError("Full GTF did not contain the expected 25 primary contigs")
+    if scope == "full" and seen_contigs != set(profile.contigs):
+        raise BuildError(f"Full GTF did not contain the expected {len(profile.contigs)} assembly reference contigs")
     if scope == "full":
         actual_feature_rows = dict(selected_counts)
-        expected_feature_rows = dict(EXPECTED_GTF_FEATURE_ROWS)
+        expected_feature_rows = dict(profile["expected"]["gtf_feature_rows"])
         if actual_feature_rows != expected_feature_rows:
             raise BuildError(
                 "Full GTF feature-row audit mismatch: expected "
                 f"{expected_feature_rows}, got {actual_feature_rows}"
             )
-        if sum(selected_counts.values()) != EXPECTED_GTF_TOTAL_ROWS:
+        expected_total = profile["expected"]["gtf_total_rows"]
+        if sum(selected_counts.values()) != expected_total:
             raise BuildError(
-                f"Full GTF row audit mismatch: expected {EXPECTED_GTF_TOTAL_ROWS}, "
+                f"Full GTF row audit mismatch: expected {expected_total}, "
                 f"got {sum(selected_counts.values())}"
             )
         header_text = "\n".join(header)
-        for required_header_value in ("version 45", "Ensembl 111", "GRCh38"):
+        for required_header_value in profile["gtf_header_tokens"]:
             if required_header_value not in header_text:
                 raise BuildError(
                     f"GENCODE release header is missing {required_header_value!r}"
@@ -651,23 +656,28 @@ def _store_sequence(
 
 
 def ingest_fastas(
-    connection: sqlite3.Connection, source: Path
+    connection: sqlite3.Connection, source: Path, profile: DatasetProfile | None = None
 ) -> tuple[dict[str, tuple[int, int]], dict[str, Any]]:
-    targets = {
-        row[0]
-        for row in connection.execute("SELECT transcript_id FROM transcript")
+    profile = profile or get_dataset_profile()
+    identities = {
+        row["transcript_id"]: row
+        for row in connection.execute("SELECT transcript_id,transcript_id_versioned,gene_id,protein_id,protein_id_versioned FROM transcript")
     }
+    targets = set(identities)
     cds_intervals: dict[str, tuple[int, int]] = {}
     transcript_records = 0
     protein_records = 0
     declared_length_errors: list[str] = []
 
     with connection:
-        for record in stream_fasta(source / "gencode.v45.pc_transcripts.fa.gz"):
+        for record in stream_fasta(source / profile.filename("transcripts")):
             metadata = parse_transcript_fasta_header(record.header)
             transcript_id = metadata["transcript_id"]
             if transcript_id not in targets:
                 continue
+            authoritative = identities[str(transcript_id)]
+            if metadata["transcript_id_versioned"] != authoritative["transcript_id_versioned"] or metadata["gene_id"] != authoritative["gene_id"]:
+                raise BuildError(f"Transcript FASTA identity differs from the selected GTF model: {transcript_id}")
             transcript_records += 1
             declared = metadata.get("declared_length")
             if declared is not None and int(declared) != len(record.sequence):
@@ -688,11 +698,16 @@ def ingest_fastas(
                     record.sequence[start0:end0],
                 )
 
-        for record in stream_fasta(source / "gencode.v45.pc_translations.fa.gz"):
+        for record in stream_fasta(source / profile.filename("translations")):
             metadata = parse_protein_fasta_header(record.header)
             transcript_id = metadata["transcript_id"]
             if transcript_id not in targets:
                 continue
+            authoritative = identities[str(transcript_id)]
+            if metadata["transcript_id_versioned"] != authoritative["transcript_id_versioned"]:
+                raise BuildError(f"Protein FASTA transcript version differs from the selected GTF model: {transcript_id}")
+            if authoritative["protein_id_versioned"] and metadata["protein_id_versioned"] != authoritative["protein_id_versioned"]:
+                raise BuildError(f"Protein FASTA peptide identity differs from the selected GTF model: {transcript_id}")
             protein_records += 1
             declared = metadata.get("declared_length")
             if declared is not None and int(declared) != len(record.sequence):
@@ -927,6 +942,13 @@ def import_features(
                         orphan_rows.append(f"{source}:{row.get('ensembl_transcript_id')}")
                         continue
                     metadata = transcript_metadata[str(transcript_id)]
+                    raw_protein, raw_protein_version, _raw_versioned = split_versioned_id(row.get("ensembl_peptide_id"))
+                    if raw_protein and (
+                        raw_protein != metadata["protein_id"]
+                        or (raw_protein_version is not None and raw_protein_version != metadata["protein_version"])
+                    ):
+                        invalid_rows.append(f"{source}:{transcript_id}:protein identifier mismatch")
+                        continue
                     try:
                         aa_start1 = _strict_integer(row.get("start"))
                         aa_end1 = _strict_integer(row.get("stop"))
@@ -1172,7 +1194,7 @@ def validate_density_tiles(connection: sqlite3.Connection) -> list[str]:
     errors: list[str] = []
     expected_rows = sum(
         (length + tile_size - 1) // tile_size
-        for length in PRIMARY_CONTIG_LENGTHS.values()
+        for (length,) in connection.execute("SELECT length FROM contig")
         for tile_size in DENSITY_TILE_SIZES
     )
     actual_rows = connection.execute("SELECT COUNT(*) FROM density_tile").fetchone()[0]
@@ -1195,16 +1217,19 @@ def validate_full_acceptance(
     export_manifest: dict[str, Any],
     feature_summary: dict[str, Any],
     preparation: dict[str, Any],
+    profile: DatasetProfile | None = None,
 ) -> list[str]:
+    profile = profile or get_dataset_profile()
     errors: list[str] = []
-    if gtf_summary["total_feature_rows"] != EXPECTED_GTF_TOTAL_ROWS:
+    expected_total = profile["expected"]["gtf_total_rows"]
+    if gtf_summary["total_feature_rows"] != expected_total:
         errors.append(
-            f"GTF rows: expected {EXPECTED_GTF_TOTAL_ROWS}, "
+            f"GTF rows: expected {expected_total}, "
             f"got {gtf_summary['total_feature_rows']}"
         )
     expected_fasta = {
-        "transcript_records_selected": EXPECTED_PC_TRANSCRIPT_FASTA_RECORDS,
-        "protein_records_selected": EXPECTED_PC_TRANSLATION_FASTA_RECORDS,
+        "transcript_records_selected": profile["expected"]["pc_transcript_fasta_records"],
+        "protein_records_selected": profile["expected"]["pc_translation_fasta_records"],
     }
     if fasta_summary != expected_fasta:
         errors.append(f"FASTA audit: expected {expected_fasta}, got {fasta_summary}")
@@ -1275,6 +1300,9 @@ def insert_database_manifest(connection: sqlite3.Connection, manifest: dict[str,
         "reference_available": manifest["reference"]["available"],
         "reference_verified": manifest["reference"]["verified"],
     }
+    for key in ("dataset_id", "species", "gencode_release"):
+        if key in manifest:
+            required[key] = manifest[key]
     def scalar(value: Any) -> str:
         if isinstance(value, bool):
             return "true" if value else "false"
@@ -1294,6 +1322,8 @@ def toolchain_hashes(project_root: Path) -> dict[str, str]:
         "backend/builder/projection.py",
         "backend/builder/schema.py",
         "backend/builder/source_manifest.py",
+        "backend/datasets.py",
+        "backend/data/dataset_profiles.json",
         "r/export_features.R",
         "r/preflight.R",
         "r/requirements.tsv",
@@ -1398,10 +1428,13 @@ def build(args: argparse.Namespace) -> Path:
         stage_seconds[name] = time.perf_counter() - stage_started
 
     source = args.source.resolve()
+    profile = get_dataset_profile(getattr(args, "dataset", None))
+    if args.scope == "sp1" and profile.dataset_id != "human-gencode-v45":
+        raise BuildError("The SP1 technical fixture is defined only for human-gencode-v45; use --scope full for another dataset")
     project_root = Path(__file__).resolve().parents[2]
     output_root = args.output_root.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
-    target_name = "sp1_fixture" if args.scope == "sp1" else "gencode_v45"
+    target_name = "sp1_fixture" if args.scope == "sp1" else profile["package_dir"]
     target = output_root / target_name
 
     with build_lock(output_root):
@@ -1410,11 +1443,11 @@ def build(args: argparse.Namespace) -> Path:
             f"validating {args.scope} inputs, R environment, and optional local reference"
         )
         build_timestamp = deterministic_timestamp(
-            source / "gencode.v45.annotation.gtf.gz"
+            source / profile.filename("gtf")
         )
-        preparation = read_preparation_manifest(source)
-        input_manifest = validate_source_inputs(source, preparation)
-        reference = validate_reference(args.reference_fasta)
+        preparation = read_preparation_manifest(source, profile)
+        input_manifest = validate_source_inputs(source, preparation, profile)
+        reference = validate_reference(args.reference_fasta, profile)
         validate_r_environment(project_root, args.rscript)
         build_toolchain_hashes = toolchain_hashes(project_root)
         finish_stage("input_and_reference_validation", stage_started)
@@ -1425,9 +1458,9 @@ def build(args: argparse.Namespace) -> Path:
             connection = connect_database(database_path)
             create_schema(connection)
             with connection:
-                insert_contigs(connection)
+                insert_contigs(connection, profile)
             gtf_summary = ingest_gtf(
-                connection, source / "gencode.v45.annotation.gtf.gz", args.scope
+                connection, source / profile.filename("gtf"), args.scope, profile
             )
             finish_stage("gtf_ingestion_and_geometry", stage_started)
             progress(
@@ -1435,7 +1468,7 @@ def build(args: argparse.Namespace) -> Path:
             )
 
             stage_started = time.perf_counter()
-            cds_intervals, fasta_summary = ingest_fastas(connection, source)
+            cds_intervals, fasta_summary = ingest_fastas(connection, source, profile)
             translation_statuses = classify_translation_mappings(connection, cds_intervals)
             finish_stage("fasta_ingestion_and_translation_validation", stage_started)
             progress(
@@ -1502,6 +1535,7 @@ def build(args: argparse.Namespace) -> Path:
             deterministic_payload = {
                 "schema_version": SCHEMA_VERSION,
                 "builder_version": BUILDER_VERSION,
+                "dataset_id": profile.dataset_id,
                 "scope": args.scope,
                 "inputs": stable_inputs,
                 "reference_sha256": (
@@ -1544,6 +1578,7 @@ def build(args: argparse.Namespace) -> Path:
                         export_manifest,
                         feature_summary,
                         preparation,
+                        profile,
                     )
                 )
             foreign_key_errors = [tuple(row) for row in connection.execute("PRAGMA foreign_key_check")]
@@ -1575,9 +1610,12 @@ def build(args: argparse.Namespace) -> Path:
                 "schema_version": SCHEMA_VERSION,
                 "builder_version": BUILDER_VERSION,
                 "build_hash": build_hash,
-                "release": GENCODE_RELEASE,
-                "ensembl_release": ENSEMBL_RELEASE,
-                "assembly": ASSEMBLY,
+                "dataset_id": profile.dataset_id,
+                "species": profile["species"],
+                "gencode_release": profile["gencode_release"],
+                "release": profile.release_label,
+                "ensembl_release": profile["ensembl_release"],
+                "assembly": profile["assembly"],
                 "scope": args.scope,
                 "technical_preview": args.scope == "sp1",
                 "created_at": build_timestamp,
@@ -1586,6 +1624,8 @@ def build(args: argparse.Namespace) -> Path:
                     {
                         "name": source_name,
                         "records": feature_summary["feature_counts"][source_name],
+                        "status": preparation["feature_sources"][source_name].get("status", "available"),
+                        "reason": preparation["feature_sources"][source_name].get("reason", preparation["feature_sources"][source_name].get("retrieval", {}).get("reason")),
                     }
                     for source_name in FEATURE_SOURCES
                 ],
@@ -1599,6 +1639,7 @@ def build(args: argparse.Namespace) -> Path:
                     "reference_ranges": reference is not None,
                     "full_annotation": args.scope == "full",
                     "density_tiles": True,
+                    "ppiPredictions": False,
                 },
                 "density_tile_sizes": list(DENSITY_TILE_SIZES),
                 "counts": counts,
@@ -1631,7 +1672,7 @@ def build(args: argparse.Namespace) -> Path:
                     "available": reference_manifest["available"],
                     "verified": reference_manifest["verified"],
                     "fai_contig_count": reference_manifest["fai_contig_count"],
-                    "primary_contig_count": len(PRIMARY_CONTIG_LENGTHS),
+                    "primary_contig_count": len(profile.contigs),
                 },
                 "foreign_key_check": foreign_key_errors,
                 "integrity_check": integrity,
@@ -1658,6 +1699,8 @@ def build(args: argparse.Namespace) -> Path:
                 str(output_root),
                 "--scope",
                 args.scope,
+                "--dataset",
+                profile.dataset_id,
             ]
             if args.reference_fasta is not None:
                 builder_invocation.extend(
@@ -1690,7 +1733,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--source",
         type=Path,
         required=True,
-        help="Directory containing the audited GENCODE v45 and feature cache",
+        help="Directory containing the selected dataset's audited GENCODE and feature cache",
     )
     parser.add_argument(
         "--output-root",
@@ -1699,6 +1742,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Parent directory for atomically published builds",
     )
     parser.add_argument("--scope", choices=("sp1", "full"), default="full")
+    parser.add_argument("--dataset", default="human-gencode-v45", help="Verified dataset profile ID (human-gencode-v45, human-gencode-v50, mouse-gencode-m39)")
     parser.add_argument(
         "--reference-fasta",
         type=Path,

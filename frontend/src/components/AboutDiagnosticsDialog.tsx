@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { APPLICATION_VERSION } from "../lib/application";
+import { APPLICATION_NAME, APPLICATION_VERSION } from "../lib/application";
 import { formatDiagnostics } from "../lib/diagnostics";
 import type { BuildManifest, Gene, Transcript } from "../types";
 
@@ -51,6 +51,9 @@ export function AboutDiagnosticsDialog({ open, manifest, gene, transcript, onClo
     }).length;
     return formatDiagnostics({
       applicationVersion: APPLICATION_VERSION,
+      datasetId: manifest.datasetId,
+      species: manifest.species,
+      featureStatus: Object.entries(manifest.featureAvailability ?? {}).map(([source, availability]) => `${source}: ${availability?.status}${availability?.reason ? ` (${availability.reason})` : ""}`),
       buildHash: manifest.buildHash,
       gencodeRelease: manifest.gencodeRelease ?? manifest.release.split(" · ")[0],
       ensemblRelease: String(manifest.ensemblRelease ?? manifest.release.match(/Ensembl\s+(\d+)/u)?.[1] ?? "not declared"),
@@ -72,7 +75,7 @@ export function AboutDiagnosticsDialog({ open, manifest, gene, transcript, onClo
   return (
     <div className="help-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section ref={dialogRef} className="help-dialog diagnostics-dialog" role="dialog" aria-modal="true" aria-labelledby="diagnostics-title" tabIndex={-1}>
-        <header><div><span className="eyebrow">About this local application</span><h2 id="diagnostics-title">Transcript Browser {APPLICATION_VERSION}</h2></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Close About and Diagnostics">×</button></header>
+        <header><div><span className="eyebrow">About this local application</span><h2 id="diagnostics-title">{APPLICATION_NAME} {APPLICATION_VERSION}</h2></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Close About and Diagnostics">×</button></header>
         <pre>{diagnostics}</pre>
         <footer><button type="button" onClick={() => {
           if (!navigator.clipboard) { onMessage("Clipboard access is unavailable."); return; }

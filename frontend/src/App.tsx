@@ -3,6 +3,7 @@ import {
   ApiError,
   createTranscriptPdf,
   fallbackManifest,
+  loadDatasetCatalog,
   loadGene,
   loadManifest,
   loadRegion,
@@ -13,6 +14,7 @@ import {
 import { CommandBar } from "./components/CommandBar";
 import { AboutDiagnosticsDialog } from "./components/AboutDiagnosticsDialog";
 import { ComparisonPanel } from "./components/ComparisonPanel";
+import { PPIContextPanel } from "./components/PPIContextPanel";
 import { FilterBar } from "./components/FilterBar";
 import { GenomeCanvas } from "./components/GenomeCanvas";
 import { HelpOverlay } from "./components/HelpOverlay";
@@ -25,6 +27,7 @@ import { TranscriptMinimap } from "./components/TranscriptMinimap";
 import { TranscriptNavigator } from "./components/TranscriptNavigator";
 import { WorkspaceEntityMenu } from "./components/WorkspaceEntityMenu";
 import { DEFAULT_VIEW_STATE } from "./data/sp1";
+import { APPLICATION_MARK, applicationDocumentTitle } from "./lib/application";
 import { fitInterval, formatLocus, zoomLocus } from "./lib/coordinates";
 import { enabledFeatureSources, filterTranscriptsWithContext, transcriptMatchesFilters } from "./lib/filters";
 import { browserKeyboardCommand } from "./lib/keyboard";
@@ -36,24 +39,29 @@ import {
   serializeComparisonExport,
   type ComparisonExportFormat,
 } from "./lib/comparisonExport";
+import { buildFeatureComparison } from "./lib/featureComparison";
+import { serializeFeatureComparison } from "./lib/featureComparisonExport";
 import { resolveQuickPdfPreset } from "./lib/pdfPreset";
 import { buildRowLayout } from "./lib/layout";
 import { normalizedSearchToken, resolveSubmittedSearch } from "./lib/searchResolution";
 import {
   DEFAULT_TRANSCRIPT_RENDER_LIMIT,
+  MAX_COLLAPSED_PROTEIN_TRANSCRIPTS,
   MAX_EXPANDED_TRANSCRIPTS,
   MAX_TRANSCRIPT_RENDER_LIMIT,
   defaultProteinTranscriptId,
+  effectiveProteinExpansionIds,
   featureSelectionForTranscript,
   intervalOverlapsLocus,
   nextExpansionState,
   nextPinnedState,
+  proteinExpansionDefaults,
   semanticDisplayMode,
   transcriptRevealDecision,
   transcriptsForDisplay,
   type TranscriptRevealRequest,
 } from "./lib/navigation";
-import { encodeViewState, parseViewState, requestedBuildHash, restoreViewState } from "./lib/urlState";
+import { encodeViewState, hasExplicitViewState, parseViewState, requestedBuildHash, restoreViewState } from "./lib/urlState";
 import {
   applyTranscriptOrder,
   moveTranscriptRelative,
@@ -63,7 +71,7 @@ import {
   type TranscriptOrderPlacement,
 } from "./lib/transcriptOrder";
 import { transcriptDemandIds, variableRowWindow } from "./lib/windowing";
-import { chooseInitialView } from "./lib/viewRestore";
+import { chooseInitialView, manifestDefaultView } from "./lib/viewRestore";
 import {
   WORKSPACE_WRITE_DEBOUNCE_MS,
   addRecentEntity,
@@ -87,6 +95,7 @@ import {
 import type {
   BrowserViewState,
   BuildManifest,
+  DatasetCatalog,
   DisplayModeSetting,
   FeatureClass,
   FeatureSource,
@@ -95,6 +104,7 @@ import type {
   LoadState,
   Locus,
   ProteinFeature,
+  ProteinExpansionDefault,
   RegionData,
   RowDensity,
   SearchResult,
@@ -135,6 +145,7 @@ export default function App() {
   const featureControllers = useRef(new Set<AbortController>());
   const lastValidLocus = useRef(DEFAULT_VIEW_STATE.locus);
   const [manifest, setManifest] = useState<BuildManifest>(fallbackManifest());
+  const [datasetCatalog, setDatasetCatalog] = useState<DatasetCatalog>();
   const [localWorkspace, setLocalWorkspace] = useState<LocalWorkspaceState>(() => createEmptyWorkspaceState(DEFAULT_VIEW_STATE.buildHash));
   const [localWorkspaceLoaded, setLocalWorkspaceLoaded] = useState(false);
   const [manifestState, setManifestState] = useState<LoadState>("loading");
@@ -160,8 +171,9 @@ export default function App() {
     transcriptId: view.selectedTranscriptId || undefined,
   });
   const pendingDefaultProteinGeneId = useRef<string | undefined>(undefined);
+  const proteinExpansionDefaultRef = useRef<ProteinExpansionDefault>("top");
   const skipNextWorkspaceSave = useRef(false);
-  const [query, setQuery] = useState("SP1");
+  const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchState, setSearchState] = useState<LoadState>("idle");
   const [searchError, setSearchError] = useState<string>();
@@ -228,6 +240,10 @@ export default function App() {
     viewRef.current = view;
   }, [view]);
 
+  useEffect(() => {
+    proteinExpansionDefaultRef.current = localWorkspace.proteinExpansionDefault ?? "top";
+  }, [localWorkspace.proteinExpansionDefault]);
+
   // Transcript/feature records are immutable across locus changes, so useful
   // in-flight work may finish while panning. A gene change or unmount makes
   // those requests stale and aborts them as a group.
@@ -246,23 +262,32 @@ export default function App() {
     const controller = new AbortController();
     setManifestState("loading");
     setStartupError(undefined);
-    void loadManifest(controller.signal)
-      .then((nextManifest) => {
+    void Promise.all([loadManifest(controller.signal), loadDatasetCatalog(controller.signal)])
+      .then(([nextManifest, catalog]) => {
+        const defaultView = manifestDefaultView(nextManifest);
+        if (!catalog.datasets.some((dataset) => dataset.datasetId === defaultView.datasetId && dataset.buildHash === nextManifest.buildHash)) {
+          throw new Error("The active manifest does not match an installed validated dataset.");
+        }
+        setDatasetCatalog(catalog);
         setManifest(nextManifest);
         setManifestState("ready");
-        let loadedWorkspace = createEmptyWorkspaceState(nextManifest.buildHash);
+        let loadedWorkspace = createEmptyWorkspaceState(nextManifest.buildHash, defaultView.datasetId);
         let workspaceStatus: ReturnType<typeof loadWorkspaceState>["status"] = "missing";
         try {
-          const loaded = loadWorkspaceState(window.localStorage, nextManifest.buildHash);
+          const loaded = loadWorkspaceState(window.localStorage, nextManifest.buildHash, defaultView.datasetId);
           loadedWorkspace = loaded.state;
           workspaceStatus = loaded.status;
         } catch {
           workspaceStatus = "invalid";
         }
         setLocalWorkspace(loadedWorkspace);
+        proteinExpansionDefaultRef.current = loadedWorkspace.proteinExpansionDefault ?? "top";
         setLocalWorkspaceLoaded(true);
-        const restored = restoreViewState(window.location.search, DEFAULT_VIEW_STATE, nextManifest.buildHash);
+        const restored = restoreViewState(window.location.search, defaultView, nextManifest.buildHash);
         const initial = chooseInitialView(window.location.search, restored.view, loadedWorkspace);
+        if (!hasExplicitViewState(window.location.search) && !initial.restoredLastView) {
+          pendingDefaultProteinGeneId.current = initial.view.selectedGeneId;
+        }
         const requested = requestedBuildOnLoad.current;
         if (restored.mismatchedBuild) {
           setBuildMismatch({ requested: requested ?? restored.mismatchedBuild, current: nextManifest.buildHash });
@@ -306,7 +331,14 @@ export default function App() {
   useEffect(() => {
     if (manifestState !== "ready") return;
     const pop = () => {
-      const restored = restoreViewState(window.location.search, DEFAULT_VIEW_STATE, manifest.buildHash);
+      navigationController.current?.abort();
+      pendingDefaultProteinGeneId.current = undefined;
+      const requestedDataset = new URLSearchParams(window.location.search).get("dataset");
+      if (requestedDataset && requestedDataset !== manifest.datasetId) {
+        window.location.reload();
+        return;
+      }
+      const restored = restoreViewState(window.location.search, manifestDefaultView(manifest), manifest.buildHash);
       setBuildMismatch(restored.mismatchedBuild
         ? { requested: restored.mismatchedBuild, current: manifest.buildHash }
         : undefined);
@@ -320,7 +352,7 @@ export default function App() {
     };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
-  }, [manifest.buildHash, manifestState, requestTranscriptReveal, writeHistory]);
+  }, [manifest, manifestState, requestTranscriptReveal, writeHistory]);
 
   // The selected gene owns transcript ordering. Detail requests are bounded by
   // local concurrency and leave summary rows usable if one transcript fails.
@@ -355,6 +387,9 @@ export default function App() {
         const defaultSelectedTranscript = nextGene.transcripts.find((transcript) => (
           transcript.id === selectedTranscriptId && transcript.proteinLength > 0
         ));
+        const expansionDefaults = pendingProteinNavigation
+          ? proteinExpansionDefaults(proteinExpansionDefaultRef.current, nextGene.transcripts)
+          : undefined;
         const next: BrowserViewState = {
           ...current,
           selectedGeneId: nextGene.id,
@@ -364,9 +399,14 @@ export default function App() {
             ? current.comparisonTranscriptId
             : "",
           transcriptOrderIds: normalizeTranscriptOrder(canonicalTranscriptIds, current.transcriptOrderIds),
-          expandedTranscriptIds: defaultProteinNavigation && defaultSelectedTranscript
-            ? nextExpansionState(defaultSelectedTranscript.id, retainedExpandedTranscriptIds, true)
-            : retainedExpandedTranscriptIds,
+          expandedTranscriptIds: expansionDefaults?.expandedTranscriptIds
+            ?? (defaultProteinNavigation && defaultSelectedTranscript
+              ? nextExpansionState(defaultSelectedTranscript.id, retainedExpandedTranscriptIds, true)
+              : retainedExpandedTranscriptIds),
+          expandAllProteins: expansionDefaults?.expandAllProteins ?? current.expandAllProteins,
+          collapsedProteinTranscriptIds: expansionDefaults?.collapsedProteinTranscriptIds
+            ?? current.collapsedProteinTranscriptIds?.filter((id) => known.has(id)),
+          displayMode: expansionDefaults?.displayMode ?? current.displayMode,
           pinnedTranscriptIds: current.pinnedTranscriptIds.filter((id) => known.has(id)),
           selectedFeatureId: selectedTranscriptId === current.selectedTranscriptId
             ? current.selectedFeatureId
@@ -496,10 +536,13 @@ export default function App() {
   const effectiveDisplayMode = semanticDisplayMode(
     view.displayMode,
     view.locus,
-    view.expandedTranscriptIds.length > 0,
+    Boolean(view.expandAllProteins) || view.expandedTranscriptIds.length > 0,
     region?.detail,
   );
-  const effectiveExpanded = effectiveDisplayMode === "expanded" ? view.expandedTranscriptIds : [];
+  const effectiveExpanded = useMemo(
+    () => effectiveDisplayMode === "expanded" ? effectiveProteinExpansionIds(gene.transcripts, view) : [],
+    [effectiveDisplayMode, gene.transcripts, view.expandAllProteins, view.collapsedProteinTranscriptIds, view.expandedTranscriptIds],
+  );
   const orderedTranscripts = useMemo(
     () => applyTranscriptOrder(gene.transcripts, view.transcriptOrderIds),
     [gene.transcripts, view.transcriptOrderIds],
@@ -553,8 +596,8 @@ export default function App() {
     [effectiveDisplayMode, effectiveExpanded, filteredTranscripts, selectedTranscriptNeighborIds, transcriptRenderLimit, view.comparisonTranscriptId, view.pinnedTranscriptIds, view.selectedTranscriptId],
   );
   const effectiveFeatureSources = useMemo(
-    () => enabledFeatureSources(view.activeSources, view.activeFeatureClasses),
-    [view.activeFeatureClasses, view.activeSources],
+    () => enabledFeatureSources(view.activeSources, view.activeFeatureClasses).filter((source) => manifest.featureAvailability?.[source]?.status !== "unavailable"),
+    [manifest.featureAvailability, view.activeFeatureClasses, view.activeSources],
   );
   const layout = useMemo(
     () => buildRowLayout(displayedTranscripts, effectiveExpanded, effectiveFeatureSources, view.rowDensity),
@@ -660,10 +703,12 @@ export default function App() {
         : [],
       view.selectedTranscriptId,
       view.pinnedTranscriptIds,
-      effectiveExpanded,
+      // All-row expansion is geometry, not a demand list. Only the visible
+      // window and explicit context may fetch features in that mode.
+      view.expandAllProteins ? view.expandedTranscriptIds : effectiveExpanded,
       view.comparisonTranscriptId,
     ),
-    [effectiveDisplayMode, effectiveExpanded, view.comparisonTranscriptId, view.pinnedTranscriptIds, view.selectedTranscriptId, windowedTranscriptIds],
+    [effectiveDisplayMode, effectiveExpanded, view.expandAllProteins, view.expandedTranscriptIds, view.comparisonTranscriptId, view.pinnedTranscriptIds, view.selectedTranscriptId, windowedTranscriptIds],
   );
   const detailDemandKey = windowAndContextDemandIds.join("|");
   const featureDemandKey = windowAndContextDemandIds.filter((id) => (
@@ -827,6 +872,9 @@ export default function App() {
         ? defaultProteinTranscriptId(gene.transcripts)
         : "";
       const nextTranscriptId = transcriptId ?? defaultGeneTranscriptId;
+      const expansionDefaults = transcriptId
+        ? { displayMode: "expanded" as const, expandedTranscriptIds: [transcriptId], expandAllProteins: false, collapsedProteinTranscriptIds: [] }
+        : proteinExpansionDefaults(proteinExpansionDefaultRef.current, sameLoadedGene ? gene.transcripts : []);
       pendingDefaultProteinGeneId.current = !transcriptId && !sameLoadedGene
         ? owner.geneId
         : undefined;
@@ -844,11 +892,10 @@ export default function App() {
           : "",
         transcriptOrderIds: owner.geneId === current.selectedGeneId ? current.transcriptOrderIds : [],
         locus: directTranscript,
-        expandedTranscriptIds: nextTranscriptId ? [nextTranscriptId] : [],
+        ...expansionDefaults,
         pinnedTranscriptIds: [],
         selectedFeatureId: undefined,
         inspectorTab: nextTranscriptId ? "transcript" : "gene",
-        displayMode: "expanded",
       }), true);
       setInspectorOpen(true);
     } catch (error) {
@@ -936,12 +983,22 @@ export default function App() {
     setFeatureRetry((value) => value + 1);
   }
 
-  function selectFeature(feature: ProteinFeature) {
+  function retryComparedFeatures() {
+    const ids = new Set([viewRef.current.selectedTranscriptId, viewRef.current.comparisonTranscriptId]);
+    setGene((current) => ({ ...current, transcripts: current.transcripts.map((transcript) =>
+      ids.has(transcript.id) && transcript.featuresState === "error" ? { ...transcript, featuresState: "idle" } : transcript) }));
+    setFeatureRetry((value) => value + 1);
+  }
+
+  function selectFeature(feature: ProteinFeature, preserveComparison = false) {
     setInspectorOpen(true);
     requestTranscriptReveal(viewRef.current.selectedGeneId, feature.transcriptId);
     commitView((current) => ({
       ...current,
       selectedTranscriptId: feature.transcriptId,
+      comparisonTranscriptId: current.comparisonTranscriptId === feature.transcriptId
+        ? preserveComparison ? current.selectedTranscriptId : ""
+        : current.comparisonTranscriptId,
       selectedFeatureId: feature.recordId,
       inspectorTab: "feature",
       displayMode: "expanded",
@@ -950,19 +1007,26 @@ export default function App() {
         current.expandedTranscriptIds,
         true,
       ),
+      collapsedProteinTranscriptIds: current.collapsedProteinTranscriptIds?.filter((id) => id !== feature.transcriptId),
     }));
   }
 
   function toggleExpanded(transcriptId: string) {
     const current = viewRef.current;
     const visiblyExpanded = effectiveDisplayMode === "expanded"
-      && current.expandedTranscriptIds.includes(transcriptId);
+      && effectiveExpanded.includes(transcriptId);
     if (
-      !visiblyExpanded
+      !current.expandAllProteins
+      && !visiblyExpanded
       && !current.expandedTranscriptIds.includes(transcriptId)
       && current.expandedTranscriptIds.length >= MAX_EXPANDED_TRANSCRIPTS
     ) {
       setSessionMessage(`Up to ${MAX_EXPANDED_TRANSCRIPTS} protein-feature rows can be expanded at once. Collapse one before opening another.`);
+      return;
+    }
+    if (current.expandAllProteins && visiblyExpanded
+      && (current.collapsedProteinTranscriptIds?.length ?? 0) >= MAX_COLLAPSED_PROTEIN_TRANSCRIPTS) {
+      setSessionMessage("This view has reached its individual-collapse limit. Choose Top transcript or None to collapse the whole gene.");
       return;
     }
     setGene((current) => ({
@@ -976,17 +1040,21 @@ export default function App() {
     commitView((current) => ({
       ...current,
       selectedTranscriptId: transcriptId,
+      comparisonTranscriptId: current.comparisonTranscriptId === transcriptId ? "" : current.comparisonTranscriptId,
       selectedFeatureId: featureSelectionForTranscript(
         current.selectedFeatureId,
         selectedFeature?.transcriptId,
         transcriptId,
       ),
       displayMode: "expanded",
-      expandedTranscriptIds: nextExpansionState(
-        transcriptId,
-        current.expandedTranscriptIds,
-        !visiblyExpanded,
-      ),
+      expandedTranscriptIds: current.expandAllProteins
+        ? current.expandedTranscriptIds.filter((id) => !visiblyExpanded || id !== transcriptId)
+        : nextExpansionState(transcriptId, current.expandedTranscriptIds, !visiblyExpanded),
+      collapsedProteinTranscriptIds: current.expandAllProteins
+        ? visiblyExpanded
+          ? [...new Set([...(current.collapsedProteinTranscriptIds ?? []), transcriptId])]
+          : current.collapsedProteinTranscriptIds?.filter((id) => id !== transcriptId) ?? []
+        : current.collapsedProteinTranscriptIds,
     }));
     const target = gene.transcripts.find((transcript) => transcript.id === transcriptId);
     setSessionMessage(`${target?.name ?? transcriptId} protein features ${visiblyExpanded ? "collapsed" : "expanded"}.`);
@@ -999,7 +1067,12 @@ export default function App() {
       const expandedTranscriptIds = pinnedTranscriptIds.includes(transcriptId)
         ? nextExpansionState(transcriptId, current.expandedTranscriptIds, true)
         : current.expandedTranscriptIds;
-      return { ...current, pinnedTranscriptIds, expandedTranscriptIds, displayMode: "expanded" };
+      return {
+        ...current, pinnedTranscriptIds, expandedTranscriptIds, displayMode: "expanded",
+        collapsedProteinTranscriptIds: pinnedTranscriptIds.includes(transcriptId)
+          ? current.collapsedProteinTranscriptIds?.filter((id) => id !== transcriptId)
+          : current.collapsedProteinTranscriptIds,
+      };
     });
     const target = gene.transcripts.find((transcript) => transcript.id === transcriptId);
     setSessionMessage(`${target?.name ?? transcriptId} ${wasPinned ? "unpinned" : "pinned"}.`);
@@ -1067,7 +1140,7 @@ export default function App() {
         ...current,
         transcripts: current.transcripts.map((transcript) => detailedById.get(transcript.id) ?? transcript),
       }));
-      const rows = buildComparisonExportRows(manifest.buildHash, gene, hydrated, localWorkspace.notes);
+      const rows = buildComparisonExportRows(manifest.buildHash, gene, hydrated, localWorkspace.notes, manifest);
       const body = serializeComparisonExport(rows, format);
       const blob = new Blob([body], { type: format === "csv" ? "text/csv;charset=utf-8" : "text/tab-separated-values;charset=utf-8" });
       const url = URL.createObjectURL(blob);
@@ -1080,6 +1153,23 @@ export default function App() {
     } catch (error) {
       const message = error instanceof ComparisonExportSelectionError ? error.message : errorMessage(error);
       setSessionMessage(`Comparison export was not created: ${message}`);
+    }
+  }
+
+  function exportFeatureComparison(format: ComparisonExportFormat) {
+    if (!selectedTranscript || !comparisonTranscript) return;
+    try {
+      const model = buildFeatureComparison(selectedTranscript, comparisonTranscript, manifest.featureSources, manifest.featureAvailability);
+      const body = serializeFeatureComparison(model, selectedTranscript, comparisonTranscript, manifest, format);
+      const url = URL.createObjectURL(new Blob([body], { type: format === "csv" ? "text/csv;charset=utf-8" : "text/tab-separated-values;charset=utf-8" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = comparisonExportFilename(gene.symbol, manifest.buildHash, format).replace("transcript-comparison", "protein-feature-comparison");
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setSessionMessage(`${anchor.download} saved with complete annotation calls and dataset provenance.`);
+    } catch (error) {
+      setSessionMessage(`Feature comparison export was not created: ${errorMessage(error)}`);
     }
   }
 
@@ -1199,7 +1289,6 @@ export default function App() {
     if (!regionGene) return;
     const sameLoadedGene = regionGene.id === gene.id;
     const nextTranscriptId = sameLoadedGene ? defaultProteinTranscriptId(gene.transcripts) : "";
-    const nextTranscript = gene.transcripts.find((transcript) => transcript.id === nextTranscriptId);
     pendingDefaultProteinGeneId.current = sameLoadedGene ? undefined : regionGene.id;
     setQuery(regionGene.symbol);
     requestTranscriptReveal(regionGene.id, nextTranscriptId || undefined);
@@ -1209,12 +1298,11 @@ export default function App() {
       selectedTranscriptId: nextTranscriptId,
       comparisonTranscriptId: "",
       transcriptOrderIds: regionGene.id === current.selectedGeneId ? current.transcriptOrderIds : [],
-      expandedTranscriptIds: nextTranscript?.proteinLength ? [nextTranscript.id] : [],
+      ...proteinExpansionDefaults(proteinExpansionDefaultRef.current, sameLoadedGene ? gene.transcripts : []),
       pinnedTranscriptIds: [],
       selectedFeatureId: undefined,
       inspectorTab: nextTranscriptId ? "transcript" : "gene",
       locus: fitInterval(regionGene.chrom, regionGene.start0, regionGene.end0),
-      displayMode: "expanded",
     }), true);
   }
 
@@ -1232,6 +1320,11 @@ export default function App() {
   ));
   const omittedTranscriptCount = Math.max(0, filteredTranscripts.length - displayedTranscripts.length);
   const workspaceReady = manifestState === "ready" && Boolean(gene.id);
+
+  useEffect(() => {
+    document.title = applicationDocumentTitle(workspaceReady ? gene.symbol : undefined,
+      manifestState === "ready" ? manifest.release : undefined);
+  }, [workspaceReady, gene.symbol, manifestState, manifest.release]);
 
   async function saveQuickPdf() {
     if (quickPdfBusy) return;
@@ -1364,6 +1457,22 @@ export default function App() {
     <div className="app-shell">
       <ReleaseDiagnostics enabled={geneState === "ready"} />
       <CommandBar
+        datasets={datasetCatalog?.datasets ?? []}
+        onDatasetChange={(datasetId) => {
+          if (datasetId === manifest.datasetId) return;
+          if (document.querySelector('[data-unsaved-annotation="true"]')) {
+            setSessionMessage("Complete pending note/tag edits before switching annotation. Wait for autosave or use Save now.");
+            return;
+          }
+          try {
+            saveWorkspaceState(window.localStorage, withLastView(localWorkspace, view));
+          } catch {
+            setSessionMessage("Dataset switch paused: export your session first because local workspace storage is unavailable.");
+            return;
+          }
+          // A new document owns new API caches, controllers, and selected release.
+          window.location.assign(`${window.location.pathname}?dataset=${encodeURIComponent(datasetId)}`);
+        }}
         manifest={manifest}
         manifestState={manifestState}
         query={query}
@@ -1394,6 +1503,9 @@ export default function App() {
           expandedTranscriptIds: displayMode === "expanded" && selectedTranscript?.proteinLength
             ? nextExpansionState(selectedTranscript.id, current.expandedTranscriptIds, true)
             : current.expandedTranscriptIds,
+          collapsedProteinTranscriptIds: displayMode === "expanded" && selectedTranscript?.proteinLength
+            ? current.collapsedProteinTranscriptIds?.filter((id) => id !== selectedTranscript.id)
+            : current.collapsedProteinTranscriptIds,
         }))}
         onToggleInspector={() => setInspectorOpen((open) => !open)}
         onToggleHelp={() => setHelpOpen(true)}
@@ -1428,6 +1540,7 @@ export default function App() {
           rowDensity={view.rowDensity}
           canvasKeyboardShortcuts={view.canvasKeyboardShortcuts}
           restoreLastView={localWorkspace.restoreLastView}
+          proteinExpansionDefault={localWorkspace.proteinExpansionDefault ?? "top"}
           onToggleSource={toggleSource}
           onToggleFeatureClass={toggleFeatureClass}
           onToggleTranscriptBiotype={toggleTranscriptBiotype}
@@ -1439,10 +1552,30 @@ export default function App() {
             setLocalWorkspace((current) => ({ ...current, restoreLastView }));
             setSessionMessage(`Automatic last-view restoration ${restoreLastView ? "enabled" : "disabled"}.`);
           }}
+          onProteinExpansionDefaultChange={(proteinExpansionDefault) => {
+            proteinExpansionDefaultRef.current = proteinExpansionDefault;
+            setLocalWorkspace((current) => ({ ...current, proteinExpansionDefault }));
+            const defaults = proteinExpansionDefaults(proteinExpansionDefault, gene.transcripts);
+            const selectedTranscriptId = proteinExpansionDefault === "top"
+              ? defaultProteinTranscriptId(gene.transcripts)
+              : viewRef.current.selectedTranscriptId;
+            requestTranscriptReveal(gene.id, selectedTranscriptId);
+            commitView((current) => ({
+              ...current, ...defaults, selectedTranscriptId,
+              comparisonTranscriptId: current.comparisonTranscriptId === selectedTranscriptId ? "" : current.comparisonTranscriptId,
+              selectedFeatureId: featureSelectionForTranscript(current.selectedFeatureId, selectedFeature?.transcriptId, selectedTranscriptId),
+            }));
+            setSessionMessage(`Default protein tracks: ${proteinExpansionDefault === "all" ? "all translated transcripts" : proteinExpansionDefault === "top" ? "top translated transcript" : "none"}. Applied here and to newly opened genes.`);
+          }}
           onClearSavedWorkspace={() => {
             skipNextWorkspaceSave.current = true;
-            try { clearWorkspaceState(window.localStorage); } catch { /* Browser storage may be unavailable. */ }
-            setLocalWorkspace(createEmptyWorkspaceState(manifest.buildHash));
+            try { clearWorkspaceState(window.localStorage, manifest.buildHash, manifest.datasetId); } catch { /* Browser storage may be unavailable. */ }
+            const emptyWorkspace = createEmptyWorkspaceState(manifest.buildHash, manifest.datasetId);
+            // Persist the empty scoped record; a preserved legacy record must
+            // not be re-imported after the user clears this dataset's workspace.
+            try { saveWorkspaceState(window.localStorage, emptyWorkspace); } catch { /* Storage may be unavailable. */ }
+            setLocalWorkspace(emptyWorkspace);
+            proteinExpansionDefaultRef.current = "top";
             setSessionMessage("Saved recents, favorites, notes, PDF preset, and last view were cleared for this build.");
           }}
         />
@@ -1597,6 +1730,15 @@ export default function App() {
                 selectedTranscript={selectedTranscript}
                 comparisonTranscript={comparisonTranscript}
                 activeSources={manifest.featureSources}
+                featureAvailability={manifest.featureAvailability}
+                onInspectFeature={(feature) => selectFeature(feature, true)}
+                onRetryFeatureComparison={retryComparedFeatures}
+                onExportFeatureComparison={exportFeatureComparison}
+                ppiPanel={comparisonTranscript && <PPIContextPanel
+                  key={`${manifest.datasetId}:${gene.id}:${selectedTranscript.id}:${comparisonTranscript.id}`}
+                  geneId={gene.id} manifest={manifest} selectedTranscript={selectedTranscript} comparisonTranscript={comparisonTranscript}
+                  onInspectFeature={(feature) => selectFeature(feature, true)}
+                />}
                 comparisonPinned={Boolean(comparisonTranscript && view.pinnedTranscriptIds.includes(comparisonTranscript.id))}
                 pinnedTranscriptCount={view.pinnedTranscriptIds.length}
                 onSetComparison={() => {
@@ -1620,7 +1762,7 @@ export default function App() {
           )}
         </> : (
           <section className="startup-workspace" role="status" aria-live="polite">
-            <span aria-hidden="true">TB</span>
+            <span aria-hidden="true">{APPLICATION_MARK}</span>
             <div>
               <strong>{manifestState === "loading" ? "Verifying the immutable local build…" : geneState === "loading" ? `Loading ${view.selectedGeneId}…` : "No verified local annotation is loaded"}</strong>
               <p>{manifestState === "error" ? "The genomic workspace remains closed until the manifest and schema checks pass." : "Transcript models will appear after local validation; no fixture or network substitute is rendered."}</p>
@@ -1637,7 +1779,7 @@ export default function App() {
           manifest={manifest}
           view={view}
           annotations={localWorkspace.notes}
-          fallback={{ ...DEFAULT_VIEW_STATE, buildHash: manifest.buildHash }}
+          fallback={manifestDefaultView(manifest)}
           onSavePdf={() => {
             setHelpOpen(false);
             setPdfOpen(true);
@@ -1645,6 +1787,8 @@ export default function App() {
           onQuickPdf={() => void saveQuickPdf()}
           quickPdfBusy={quickPdfBusy}
           onRestore={(restored, annotations) => {
+            navigationController.current?.abort();
+            pendingDefaultProteinGeneId.current = undefined;
             setBuildMismatch(undefined);
             viewRef.current = restored;
             setView(restored);

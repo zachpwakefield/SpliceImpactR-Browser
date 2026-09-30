@@ -3,6 +3,8 @@ import CryptoKit
 import Darwin
 import Foundation
 
+private let applicationName = "SpliceImpactR Browser"
+
 private enum LauncherRuntimeError: LocalizedError {
     case missingEmbeddedRuntime
     case invalidRuntimeManifest(URL)
@@ -32,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var expectedFrontendHash = ""
     private var pythonURL: URL?
     private var expectedPythonVersion = ""
+    private var defaultDatasetId = "human-gencode-v45"
     private let selfTest = CommandLine.arguments.contains("--self-test")
     var exitCode: Int32 = 0
     private var window: NSWindow!
@@ -116,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let appMenu = NSMenu()
         let openItem = NSMenuItem(
-            title: "Open Transcript Browser",
+            title: "Open \(applicationName)",
             action: #selector(openBrowser(_:)),
             keyEquivalent: "o"
         )
@@ -124,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(openItem)
         appMenu.addItem(.separator())
         let quitItem = NSMenuItem(
-            title: "Stop & Quit Transcript Browser",
+            title: "Stop & Quit \(applicationName)",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -140,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Transcript Browser"
+        window.title = applicationName
         window.isReleasedWhenClosed = false
         window.center()
 
@@ -152,17 +155,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         symbol.translatesAutoresizingMaskIntoConstraints = false
         symbol.image = NSImage(
             systemSymbolName: "point.3.filled.connected.trianglepath.dotted",
-            accessibilityDescription: "Transcript Browser"
+            accessibilityDescription: applicationName
         ) ?? NSImage(named: NSImage.applicationIconName)
         symbol.contentTintColor = NSColor(calibratedRed: 0.10, green: 0.36, blue: 0.31, alpha: 1)
         symbol.imageScaling = .scaleProportionallyUpOrDown
 
-        let title = NSTextField(labelWithString: "Transcript Browser")
+        let title = NSTextField(labelWithString: applicationName)
         title.translatesAutoresizingMaskIntoConstraints = false
         title.font = .systemFont(ofSize: 24, weight: .semibold)
         title.textColor = NSColor(calibratedRed: 0.08, green: 0.24, blue: 0.21, alpha: 1)
 
-        let subtitle = NSTextField(labelWithString: "GENCODE v45 · verified local workspace")
+        let subtitle = NSTextField(labelWithString: "Verified local genome annotations")
         subtitle.translatesAutoresizingMaskIntoConstraints = false
         subtitle.font = .systemFont(ofSize: 12, weight: .medium)
         subtitle.textColor = .secondaryLabelColor
@@ -303,6 +306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let root = testStateRoot {
             stateRoot = root
         } else {
+            // Preserve the legacy private-data location across this display-name change.
             stateRoot = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("Transcript Browser", isDirectory: true)
         }
@@ -371,6 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 self.runtimeURL = preparedRuntime.0
                 self.expectedBuildHash = preparedRuntime.1["buildHash"] as! String
+                self.defaultDatasetId = preparedRuntime.1["defaultDatasetId"] as? String ?? "human-gencode-v45"
                 self.expectedFrontendHash = preparedRuntime.1["frontendIndexSha256"] as! String
                 self.pythonURL = URL(fileURLWithPath: preparedRuntime.1["pythonExecutable"] as! String)
                 self.expectedPythonVersion = preparedRuntime.1["pythonVersion"] as! String
@@ -409,7 +414,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let handle = try FileHandle(forWritingTo: logURL)
             try handle.seekToEnd()
-            if let marker = "\n\n=== Transcript Browser launch \(Date()) ===\n".data(using: .utf8) {
+            if let marker = "\n\n=== \(applicationName) launch \(Date()) ===\n".data(using: .utf8) {
                 try handle.write(contentsOf: marker)
             }
             serverLogHandle = handle
@@ -431,7 +436,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let sitePackagesURL = runtimeURL
                 .appendingPathComponent("site-packages", isDirectory: true)
             let bootstrap = """
-            import os,runpy,sys; runtime,site_packages,project,port,version=sys.argv[1:6]; assert sys.version_info[:2]==tuple(map(int,version.split('.')[:2])), "Python version changed; reinstall the Mac launcher"; print(f"Python runtime ready: prefix={sys.prefix} cwd={os.getcwd()}",flush=True); sys.path[0:0]=[runtime,site_packages]; sys.argv=["backend.app.cli","--project-root",project,"--port",port]; runpy.run_module("backend.app.cli",run_name="__main__")
+            import os,runpy,sys; runtime,site_packages,project,port,version,dataset=sys.argv[1:7]; assert sys.version_info[:2]==tuple(map(int,version.split('.')[:2])), "Python version changed; reinstall the Mac launcher"; print(f"Python runtime ready: prefix={sys.prefix} cwd={os.getcwd()}",flush=True); sys.path[0:0]=[runtime,site_packages]; sys.argv=["backend.app.cli","--project-root",project,"--port",port,"--dataset",dataset]; runpy.run_module("backend.app.cli",run_name="__main__")
             """
             process.arguments = [
                 "-I",
@@ -444,6 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 runtimeURL.path,
                 String(port),
                 expectedPythonVersion,
+                defaultDatasetId,
             ]
             process.standardOutput = handle
             process.standardError = handle
@@ -579,8 +585,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openButton.isEnabled = true
         retryButton.isHidden = true
         statusLabel.stringValue = reused
-            ? "The local transcript browser is already running."
-            : "The local transcript browser is ready."
+            ? "\(applicationName) is already running."
+            : "\(applicationName) is ready."
         let shortHash = String((buildHash ?? "verified build").prefix(16))
         quitButton.title = ownsServer ? "Stop & Quit" : "Quit Launcher"
         let lifecycle = ownsServer

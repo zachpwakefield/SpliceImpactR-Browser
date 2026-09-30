@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
-import { loadTranscriptSequence, type SequenceKind } from "../api";
+import { datasetUrl, loadTranscriptSequence, type SequenceKind } from "../api";
 import { formatLocus } from "../lib/coordinates";
 import { buildSequenceLineRange, sequenceDecorations } from "../lib/sequence";
 import { fixedRowWindow } from "../lib/windowing";
@@ -301,12 +301,12 @@ export function Inspector({
               <Fact label="Strand" value={`${gene.strand} (${gene.strand === "+" ? "forward" : "reverse"})`} />
               <Fact label="Biotype" value={gene.biotype} />
               <Fact label="Transcripts" value={gene.transcripts.length} />
-              <Fact label="HGNC" value={gene.hgncId} />
+              <Fact label={gene.id.startsWith("ENSMUSG") ? "Gene authority ID" : "HGNC"} value={gene.hgncId} />
             </dl>
             <div className="id-copy-row"><code>{gene.versionedId}</code><CopyButton value={gene.versionedId} label="versioned gene ID" /></div>
             <div className="export-row" aria-label="Bounded gene exports">
-              <a href={`/api/v1/export?entity=gene&id=${encodeURIComponent(gene.versionedId)}&format=json`}>Export JSON</a>
-              <a href={`/api/v1/export?entity=gene&id=${encodeURIComponent(gene.versionedId)}&format=tsv`}>Export TSV</a>
+              <a href={datasetUrl(`/api/v1/export?entity=gene&id=${encodeURIComponent(gene.versionedId)}&format=json`)}>Export JSON</a>
+              <a href={datasetUrl(`/api/v1/export?entity=gene&id=${encodeURIComponent(gene.versionedId)}&format=tsv`)}>Export TSV</a>
             </div>
             <div className="inspector-callout neutral">
               <strong>Authoritative local annotation</strong>
@@ -331,8 +331,8 @@ export function Inspector({
               <div className="inspector-callout neutral"><strong>No translated product</strong><p>This transcript remains part of the gene model but has no local protein product or protein-feature lane.</p></div>
             )}
             <div className="export-row" aria-label="Bounded transcript exports">
-              <a href={`/api/v1/export?entity=transcript&id=${encodeURIComponent(transcript.versionedId)}&sources=${encodeURIComponent(activeSources.join(","))}&format=json`}>Export JSON</a>
-              <a href={`/api/v1/export?entity=transcript&id=${encodeURIComponent(transcript.versionedId)}&sources=${encodeURIComponent(activeSources.join(","))}&format=tsv`}>Export TSV</a>
+              <a href={datasetUrl(`/api/v1/export?entity=transcript&id=${encodeURIComponent(transcript.versionedId)}&sources=${encodeURIComponent(activeSources.join(","))}&format=json`)}>Export JSON</a>
+              <a href={datasetUrl(`/api/v1/export?entity=transcript&id=${encodeURIComponent(transcript.versionedId)}&sources=${encodeURIComponent(activeSources.join(","))}&format=tsv`)}>Export TSV</a>
             </div>
             <dl className="fact-grid">
               <Fact label="Biotype" value={transcript.biotype} />
@@ -406,8 +406,8 @@ export function Inspector({
                 </dl>
                 {selectedFeature.mappingReason && <p className="data-note"><strong>Mapping note:</strong> {selectedFeature.mappingReason}</p>}
                 <div className="export-row" aria-label="Bounded feature exports">
-                  <a href={`/api/v1/export?entity=feature&id=${encodeURIComponent(selectedFeature.recordId)}&format=json`}>Export JSON</a>
-                  <a href={`/api/v1/export?entity=feature&id=${encodeURIComponent(selectedFeature.recordId)}&format=tsv`}>Export TSV</a>
+                  <a href={datasetUrl(`/api/v1/export?entity=feature&id=${encodeURIComponent(selectedFeature.recordId)}&format=json`)}>Export JSON</a>
+                  <a href={datasetUrl(`/api/v1/export?entity=feature&id=${encodeURIComponent(selectedFeature.recordId)}&format=tsv`)}>Export TSV</a>
                 </div>
                 <h3 className="section-title">Projected CDS pieces</h3>
                 <ol className="projection-list">

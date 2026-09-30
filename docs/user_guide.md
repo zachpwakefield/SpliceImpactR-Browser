@@ -8,7 +8,13 @@ From the project directory:
 ./run_local.sh
 ```
 
-Open the printed `http://127.0.0.1:<port>` URL. Normal startup accepts only the validated full GENCODE v45 package. The smaller SP1 acceptance package is available only through the explicitly labeled command `./run_local.sh --dev-fixture`.
+Open the printed `http://127.0.0.1:<port>` URL. Normal startup accepts validated full packages, with human v45 as the default. Use `./run_local.sh --dataset human-gencode-v50` or `--dataset mouse-gencode-m39` after preparation. The smaller human-v45 SP1 acceptance package is available only through `./run_local.sh --dev-fixture`.
+
+The **Genome annotation** toolbar selector shows installed validated datasets.
+Switching preserves the current dataset's saved workspace and opens the other
+dataset's starting/saved view. Complete pending notes/tag edits before switching.
+Separate tabs can show different releases or species. Search results and exported
+files always belong to that tab's selected dataset; see [genome datasets](genome_datasets.md).
 
 The launcher does not open a browser unless `--open` is supplied, does not bind beyond loopback, and does not fetch annotation, reference, fonts, scripts, search results, or telemetry from the internet.
 
@@ -17,7 +23,7 @@ The launcher does not open a browser unless `--open` is supplied, does not bind 
 The shareable source distribution does not include the generated SP1 fixture or full SQLite package. Build a local package first; the command bar accepts:
 
 - gene symbols and transcript names, such as `SP1` and `SP1-201`;
-- versioned or unversioned ENSG, ENST, ENSP, and ENSE identifiers; and
+- versioned or unversioned human ENSG/ENST/ENSP/ENSE or mouse ENSMUSG/ENSMUST/ENSMUSP/ENSMUSE identifiers; and
 - coordinates such as `chr12:53,380,176-53,416,446`.
 
 Exact matches rank first. Submitting a gene symbol with exactly one matching gene record navigates directly to that gene, even when the bounded result palette also contains its transcripts or other genes that share the prefix. When distinct gene records carry the same exact symbol, choose one by stable ID, chromosome, biotype, and locus; the application does not guess. A direct transcript, protein, or exon result resolves its owning transcript/gene before navigation.
@@ -44,14 +50,16 @@ Broad loci use precomputed density and packed genes. Below the detail thresholds
 
 ## Inspect transcripts and proteins
 
-Fresh gene navigation defaults to **Protein features**, selects the first available translated transcript, and opens its protein-feature row. This default applies to a new gene search or explicit gene choice; an explicit URL, imported session, Back/Forward state, or restored last view remains authoritative and keeps its requested track-content mode and expansion set.
+The **View → Default protein tracks** setting offers **All translated transcripts**, **Top translated transcript** (the initial default), and **None**. Choosing a setting applies it to the current gene and future fresh gene searches/choices. Top means the first translated transcript in annotation order, not a biological ranking. An explicit URL, imported session, Back/Forward state, or restored last view remains authoritative and keeps its requested content mode and expansion state.
+
+Selecting a transcript updates the inspector but does not itself expand its tracks. Use the triangle beside its name, or choose All. All includes every translated row matching the current transcript filters, even when it has no protein calls; it does not infer annotations for noncoding products. Feature data loads only for the visible window and explicit selection/comparison/pinned context.
 
 Transcript disclosure and pin controls are native buttons in every transcript-content mode. Opening a translated transcript switches to **Protein features**, loads that transcript’s feature rows locally, and renders two deliberately separate coordinate systems:
 
 - exon-confined genomic projections on the shared genomic scale; and
 - a continuous N-to-C amino-acid inset with its own scale.
 
-Disclosures are additive rather than accordion-like. Up to 25 translated transcripts may remain expanded simultaneously; opening another does not collapse earlier rows, and collapsing one leaves the others open. At the bound, the browser asks you to collapse a row before opening another instead of silently replacing or omitting one. The expansion set is preserved in URL, portable-session, and validated last-view state.
+Manual disclosures are additive rather than accordion-like and capped at 25 simultaneous rows. At the bound, collapse a row or use All instead of silently replacing an existing row. All uses a compact view flag, not a 25-row prefix, and supports up to 500 individually collapsed exceptions. The flag, exceptions and manual expansion set survive URL, portable-session and validated last-view restoration. The default preference is stored separately for this dataset/build.
 
 Expanded rows reserve their geometry from the active feature-source selection before asynchronous records arrive. Loading, success, an empty valid result, or a retry therefore fills the same reserved row without moving later transcripts or changing the user’s scroll position.
 
@@ -66,6 +74,49 @@ The **Transcripts** menu filters biotypes and can require any selected annotatio
 To compare two isoforms more closely, select one transcript as the anchor and open the **↕ Reorder** control on the other row. Move it one visible row at a time, or place it directly above or below the selected transcript. This changes only the visual order shared by the label rail and Canvas; transcript identity, genomic coordinates, features, filtering, and the immutable annotation package do not change. The **Order** menu reports whether a custom order is active and restores the original order in one action. Keyboard users can Tab to every reorder control, and focus follows a row after it moves.
 
 For an explicit two-column comparison, select the anchor and then set the second transcript with the current-gene navigator’s **Comparison transcript** selector, a row’s **Compare** control, or a pinned row’s **Compare** control. The selected and comparison transcripts must be different members of the current gene. The **Compare** inspector distinguishes genuine zero from missing, not applicable, and not-yet-loaded values while showing IDs, biotype, support and annotation level, structural lengths, exon count, CCDS/APPRIS, scientific flags, per-source feature counts, and shared/unique tags. Actions can swap selected/comparison, clear or pin comparison, and place comparison immediately above or below selection. Merely opening comparison never changes transcript order or scroll position.
+
+**Actual protein-feature differences** lists source/accession/method identities
+with every recorded AA interval on each isoform. It initially shows differences;
+turn off **Show differences only** for shared calls, or search a feature name or
+accession. Repeated calls are preserved, with explicit feature/call pagination.
+**Observed only on selected/comparison**, **Call count differs**, and **AA
+coordinates differ** describe annotations—not proven biological domain
+gain/loss or aligned residue correspondence. Each protein uses 1-based
+inclusive AA coordinates. Partial mappings are marked AA-only; original
+out-of-protein calls remain visible with a warning. Unknown accessions are not
+matched. Loading/error/unavailable states are never treated as absent calls.
+
+Use the Compare section shortcuts to jump directly to protein features, PPI
+context, or transcript facts without scrolling through the other sections.
+
+Click an AA range to inspect that exact feature. Inspecting a comparison-side
+call swaps the selected/comparison roles and preserves the pair. Canvas
+source/class filters do not hide comparison evidence: all available sources
+are included.
+
+**Feature calls CSV/TSV** exports all compared identities/calls, including shared
+calls and non-visible pages. The first data row has `record_type=provenance`;
+feature rows have `record_type=feature_identity`. JSON call arrays retain record
+IDs, names, exact ranges, projection state, and out-of-protein warnings. Dataset,
+build, source availability, and protein identity/length fields are included.
+Empty comparisons still carry provenance without an invented feature.
+
+For a human dataset with optional context prepared, **PPI context and focal
+feature evidence** lists BioGRID-backed gene records and DDI/DMI endpoint
+identifiers. The default filter is domain/motif linked; **All gene-level
+records** includes entries without a supplied feature mechanism. Each focal
+identifier is **Observed**, **Not observed** in successfully loaded available
+annotations, or **Not assessed** (unsupported namespace, unavailable source,
+missing protein, loading/error, or invalid AA bounds). Click an observed token
+to inspect a corresponding call. Partner identifiers are shown separately and
+are not assessed against the focal isoforms.
+
+This context is not an isoform interaction prediction: endpoint lists are
+aggregated, original pairings and partner isoforms/expression are unknown, and
+no switch, affinity, confidence or probability is inferred. The resource's
+date/release is explicitly unknown; its package/data hash and annotation-build
+binding appear in provenance. Mouse shows a human-only notice. Missing optional
+context does not disable ordinary transcript/protein browsing.
 
 Custom order is gene-scoped. Hidden filtered rows retain their relative place, selected/pinned context remains visible, and the selected transcript’s immediate neighbors remain in the bounded display even when a large gene exceeds the initial 120-row logical limit. Choosing a different gene starts from that gene’s original order.
 
@@ -114,15 +165,20 @@ CSV and TSV use stable columns for immutable build/gene/transcript identities, s
 
 ## Start without Terminal on macOS
 
-Double-click **Transcript Browser.app** on the Desktop. Its small native status window starts the verified server only on `127.0.0.1`, waits for the immutable manifest, and opens the workspace in the default browser. Use **Open Browser** to reopen the page. Use **Stop & Quit**, close the launcher window, or choose Quit to stop the server process owned by the launcher.
+Double-click **SpliceImpactR Browser.app** on the Desktop. Its small native status window starts the verified server only on `127.0.0.1`, waits for the immutable manifest, and opens the workspace in the default browser. Use **Open Browser** to reopen the page. Use **Stop & Quit**, close the launcher window, or choose Quit to stop the server process owned by the launcher.
 
-Application version `1.1.2` identifies these interface and launcher capabilities. The annotation build hash identifies scientific content. Updating the application does not change the GENCODE/Ensembl/assembly data unless a separately verified annotation build is installed.
+The name changed from Transcript Browser; saved-session formats, local browser
+storage keys and native runtime/log directories retain their legacy identities.
+Reinstall to get the newly named Mac app and replace any old Dock shortcut.
+The installer leaves the older named bundle untouched.
+
+Application version `1.2.0` identifies these interface and launcher capabilities. Each dataset's annotation build hash identifies scientific content. Updating the application does not change the GENCODE/Ensembl/assembly data unless a separately verified annotation build is installed.
 
 The 2026-07-14 search-resolution source patch is `1.1.2` build 4. It makes a unique exact gene symbol navigate to the gene instead of treating same-gene transcript suggestions as ambiguity; genuine duplicate gene symbols still require an explicit choice. It changes no annotation database, schema, or build identity. Native installation and smoke evidence for this patch are recorded only after those steps run; see `docs/release_checklist.md`.
 
 The preceding 2026-07-14 installed release was `1.1.1` build 3 and retained the same exact immutable annotation manifest. Its completed gate, native smoke, and production asset identities remain historical release evidence in `docs/release_checklist.md`.
 
-The launcher expects the `transcript_browser` project beside it on the Desktop. Its one-time installer prepares a versioned private runtime under `~/Library/Application Support/Transcript Browser`; ordinary launches do not open Terminal. If the app is rebuilt or that private runtime is removed, run `./desktop_app/install_macos_app.sh` once from the project, then return to double-click use. If startup fails, keep the app and project together and inspect `~/Library/Logs/Transcript Browser/server.log`. The normal Terminal command remains available for development and release verification.
+The one-time installer prepares a versioned private runtime under `~/Library/Application Support/Transcript Browser`; ordinary launches do not depend on a particular checkout name or open Terminal. If the app is rebuilt or its private runtime is removed, run `./desktop_app/install_macos_app.sh` once from the source checkout. Pass a reviewed dataset ID to choose the default; all installed validated datasets are packaged. Inspect `~/Library/Logs/Transcript Browser/server.log` for startup failures. The normal Terminal command remains available for development and release verification.
 
 ### Save a PDF report
 
@@ -161,7 +217,8 @@ Displayed loci and copied prose are 1-based inclusive. SQLite, the JSON API, cac
 - **An optional reference receipt/checksum fails:** follow `docs/reference_setup.md`, or omit the reference and rebuild the transcript/protein-only package; do not edit the active manifest by hand.
 - **A search is missing an alias:** v1 indexes local GTF names and stable IDs. It does not claim a complete HGNC synonym catalog or typo-tolerant search.
 - **The previous view did not restore:** an explicit URL takes priority, restoration may be disabled, or the saved workspace may belong to another annotation build/browser profile. Open the View settings before assuming data loss.
-- **A 26th protein row will not open:** simultaneous protein-feature expansion is intentionally bounded to 25 rows. Collapse any open protein row, then expand the additional transcript.
+- **Only one transcript shows protein tracks:** selecting another row does not expand it. Use its triangle or **View → Default protein tracks → All translated transcripts**. Empty source coverage is distinct from a collapsed row.
+- **A 26th manual protein row will not open:** manual expansion is bounded to 25 rows. Collapse a row or use All, whose feature requests remain window-bounded.
 - **Recents, favorites, or notes differ in another browser:** these are intentionally browser-profile-local and are not synchronized. Use a portable session and its explicit annotation merge when transfer is intended.
 - **Quick PDF opens the full dialog:** its saved preset was absent, stale, build-mismatched, or unsafe for the current transcripts/range. Review the prefilled bounded options rather than expecting silent truncation.
 - **The interval is dense or truncated:** zoom in. API and render bounds deliberately prevent full-chromosome transcript payloads.

@@ -22,7 +22,8 @@ browser_inventory_sha256 <- function(transcript_ids) {
   digest::digest(text, algo = "sha256", serialize = FALSE)
 }
 
-read_browser_annotation <- function(gtf_path) {
+read_browser_annotation <- function(gtf_path, profile = NULL) {
+  if (!is.null(profile)) browser_validate_gtf_header(gtf_path, profile)
   tags <- c(
     "gene_id", "transcript_id", "transcript_type", "protein_id",
     "exon_number", "exon_id", "transcript_support_level"
@@ -40,6 +41,31 @@ read_browser_annotation <- function(gtf_path) {
   models <- raw[type == "transcript"]
   if (!nrow(models) || anyNA(models$transcript_id) || anyDuplicated(models$transcript_id)) {
     stop("Raw GTF must contain unique, non-missing transcript identifiers.", call. = FALSE)
+  }
+  if (!is.null(profile)) {
+    genes <- raw[type == "gene"]
+    if (anyNA(genes$gene_id) || anyDuplicated(genes$gene_id) ||
+        any(!startsWith(genes$gene_id, profile$identifier_prefixes$gene)) ||
+        any(!startsWith(models$transcript_id, profile$identifier_prefixes$transcript))) {
+      stop("Raw GTF identifiers do not match the selected species.", call. = FALSE)
+    }
+    observed <- table(raw$type)
+    for (kind in names(profile$expected$gtf_feature_rows)) {
+      expected <- profile$expected$gtf_feature_rows[[kind]]
+      actual <- if (kind %in% names(observed)) as.integer(observed[[kind]]) else 0L
+      if (!is.null(expected) && actual != expected) {
+        stop("Incomplete ", profile$dataset_id, " GTF inventory for ", kind,
+             ": expected ", expected, "; found ", actual, call. = FALSE)
+      }
+    }
+    if (!is.null(profile$expected$gtf_total_rows) && nrow(raw) != profile$expected$gtf_total_rows) {
+      stop("The raw GTF total row inventory is incomplete.", call. = FALSE)
+    }
+    if (!setequal(unique(raw$chr), names(profile$contigs)) ||
+        any(raw$start < 1L | raw$end < raw$start |
+            raw$end > unlist(profile$contigs, use.names = TRUE)[raw$chr])) {
+      stop("Raw GTF coordinates do not match the selected assembly reference chromosomes.", call. = FALSE)
+    }
   }
 
   # CDS coordinates are 1-based inclusive. GENCODE exon_number follows
@@ -92,17 +118,30 @@ read_browser_annotation <- function(gtf_path) {
   )
 }
 
-read_browser_proteins <- function(protein_path) {
+read_browser_proteins <- function(protein_path, profile = NULL) {
   proteins <- Biostrings::readAAStringSet(protein_path)
   headers <- strsplit(names(proteins), "|", fixed = TRUE)
   if (any(lengths(headers) < 2L)) {
     stop("Protein FASTA headers must contain protein and transcript identifiers.", call. = FALSE)
   }
-  data.table::data.table(
+  result <- data.table::data.table(
     protein_id = browser_stable_id(vapply(headers, `[[`, character(1), 1L)),
     transcript_id = browser_stable_id(vapply(headers, `[[`, character(1), 2L)),
     protein_seq = as.character(proteins)
   )
+  if (!is.null(profile)) {
+    if (any(!startsWith(result$protein_id, profile$identifier_prefixes$protein)) ||
+        any(!startsWith(result$transcript_id, profile$identifier_prefixes$transcript))) {
+      stop("Protein FASTA identifiers do not match the selected species.", call. = FALSE)
+    }
+    # Official FASTAs include ALL annotation regions while our catalog is CHR.
+    # The builder's selected-record count is not the full FASTA record count.
+    expected <- profile$expected$pc_translation_fasta_records_total
+    if (!is.null(expected) && nrow(result) != expected) {
+      stop("Protein FASTA record inventory does not match the selected release.", call. = FALSE)
+    }
+  }
+  result
 }
 
 normalize_browser_features <- function(features, source) {

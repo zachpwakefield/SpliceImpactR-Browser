@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 SOURCE_DIR="$ROOT/desktop_app"
-BUILT_APP="$SOURCE_DIR/dist/Transcript Browser.app"
-INSTALLED_APP="$HOME/Applications/Transcript Browser.app"
-DESKTOP_APP="$HOME/Desktop/Transcript Browser.app"
+BUILT_APP="$SOURCE_DIR/dist/SpliceImpactR Browser.app"
+INSTALLED_APP="$HOME/Applications/SpliceImpactR Browser.app"
+DESKTOP_APP="$HOME/Desktop/SpliceImpactR Browser.app"
+DATASET="${1:-human-gencode-v45}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "This optional installer requires macOS. Use ./run_local.sh on Linux/WSL2." >&2
@@ -27,13 +28,14 @@ elif [[ -e "$DESKTOP_APP" ]]; then
   exit 2
 fi
 
-"$SOURCE_DIR/build_macos_app.sh"
+"$SOURCE_DIR/build_macos_app.sh" "$BUILT_APP" "$DATASET"
 
 MANIFEST="$BUILT_APP/Contents/Resources/Runtime-manifest.json"
 ARCHIVE="$BUILT_APP/Contents/Resources/Runtime.zip"
 RUNTIME_VERSION="$("$ROOT/.venv/bin/python" -B -c \
   'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["runtimeVersion"])' \
   "$MANIFEST")"
+# Stable legacy data location: renaming the application must not move cached data.
 RUNTIME_ROOT="$HOME/Library/Application Support/Transcript Browser/Runtime"
 CACHED_RUNTIME="$RUNTIME_ROOT/$RUNTIME_VERSION"
 STAGING_RUNTIME=""
@@ -60,13 +62,13 @@ else
     "$ROOT" "$STAGING_RUNTIME" "$CACHED_RUNTIME"
 fi
 mkdir -p "$HOME/Applications" "$HOME/Desktop"
-STAGED_APP_ROOT="$(mktemp -d "$HOME/Applications/.transcript-browser-install.XXXXXX")"
-STAGED_APP="$STAGED_APP_ROOT/Transcript Browser.app"
+STAGED_APP_ROOT="$(mktemp -d "$HOME/Applications/.spliceimpactr-browser-install.XXXXXX")"
+STAGED_APP="$STAGED_APP_ROOT/SpliceImpactR Browser.app"
 ditto --norsrc --noextattr "$BUILT_APP" "$STAGED_APP"
 xattr -cr "$STAGED_APP"
 codesign --verify --deep --strict "$STAGED_APP"
 if [[ -e "$INSTALLED_APP" ]]; then
-  PREVIOUS_APP="$HOME/Applications/.Transcript Browser.previous-$$.app"
+  PREVIOUS_APP="$HOME/Applications/.SpliceImpactR Browser.previous-$$.app"
   mv "$INSTALLED_APP" "$PREVIOUS_APP"
 fi
 mv "$STAGED_APP" "$INSTALLED_APP"

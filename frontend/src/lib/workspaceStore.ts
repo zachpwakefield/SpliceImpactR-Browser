@@ -10,10 +10,15 @@ import {
   type BrowserViewState,
   type FeatureClass,
   type FeatureSource,
+  type ProteinExpansionDefault,
   type TranscriptFlag,
 } from "../types";
 import { MAX_LOCUS_SPAN_BP } from "./coordinates";
-import { MAX_EXPANDED_TRANSCRIPTS } from "./navigation";
+import {
+  MAX_COLLAPSED_PROTEIN_TRANSCRIPTS,
+  MAX_EXPANDED_TRANSCRIPTS,
+  normalizeProteinExpansionDefault,
+} from "./navigation";
 
 export const WORKSPACE_SCHEMA_VERSION = 1 as const;
 export const WORKSPACE_STORAGE_KEY = "transcript-browser:workspace:v1";
@@ -79,9 +84,12 @@ export interface PdfPreset {
 }
 
 export interface LocalWorkspaceState {
+  datasetId?: string;
   schemaVersion: typeof WORKSPACE_SCHEMA_VERSION;
   buildHash: string;
   restoreLastView: boolean;
+  /** Absent in legacy workspaces; the effective preference is Top. */
+  proteinExpansionDefault?: ProteinExpansionDefault;
   lastView?: BrowserViewState;
   recents: EntityReference[];
   favorites: EntityReference[];
@@ -247,6 +255,9 @@ function normalizedView(value: unknown, currentBuildHash: string): BrowserViewSt
   const transcriptOrderIds = safeIdentifierArray(value.transcriptOrderIds, MAX_VIEW_TRANSCRIPT_IDS);
   const expandedTranscriptIds = safeIdentifierArray(value.expandedTranscriptIds, MAX_VIEW_TRANSCRIPT_IDS)
     ?.slice(0, MAX_EXPANDED_TRANSCRIPTS);
+  const collapsedProteinTranscriptIds = value.collapsedProteinTranscriptIds === undefined
+    ? undefined
+    : safeIdentifierArray(value.collapsedProteinTranscriptIds, MAX_COLLAPSED_PROTEIN_TRANSCRIPTS);
   const pinnedTranscriptIds = safeIdentifierArray(value.pinnedTranscriptIds, MAX_VIEW_PINNED_IDS);
   const activeSources = enumArray(value.activeSources, FEATURE_SOURCES);
   const activeFeatureClasses = enumArray(value.activeFeatureClasses, FEATURE_CLASSES);
@@ -255,6 +266,8 @@ function normalizedView(value: unknown, currentBuildHash: string): BrowserViewSt
   if (
     !transcriptOrderIds
     || !expandedTranscriptIds
+    || (value.expandAllProteins !== undefined && typeof value.expandAllProteins !== "boolean")
+    || (value.collapsedProteinTranscriptIds !== undefined && !collapsedProteinTranscriptIds)
     || !pinnedTranscriptIds
     || !activeSources
     || !activeFeatureClasses
@@ -273,6 +286,7 @@ function normalizedView(value: unknown, currentBuildHash: string): BrowserViewSt
   ) return undefined;
 
   const cleaned: UnknownRecord = {
+    ...(isSafeIdentifier(value.datasetId) ? { datasetId: value.datasetId } : {}),
     buildHash: currentBuildHash,
     selectedGeneId: value.selectedGeneId,
     locus: { chrom, start0, end0 },
@@ -280,6 +294,10 @@ function normalizedView(value: unknown, currentBuildHash: string): BrowserViewSt
     comparisonTranscriptId: value.comparisonTranscriptId || "",
     transcriptOrderIds,
     expandedTranscriptIds,
+    ...(typeof value.expandAllProteins === "boolean" ? { expandAllProteins: value.expandAllProteins } : {}),
+    ...(collapsedProteinTranscriptIds ? {
+      collapsedProteinTranscriptIds: collapsedProteinTranscriptIds.filter((id) => !expandedTranscriptIds.includes(id)),
+    } : {}),
     pinnedTranscriptIds,
     activeSources: activeSources as FeatureSource[],
     activeFeatureClasses: activeFeatureClasses as FeatureClass[],
@@ -334,9 +352,11 @@ function isValidBuildHash(value: unknown): value is string {
   return isSafeString(value, 160) && SAFE_IDENTIFIER.test(value);
 }
 
-export function createEmptyWorkspaceState(buildHash: string): LocalWorkspaceState {
+export function createEmptyWorkspaceState(buildHash: string, datasetId?: string): LocalWorkspaceState {
   if (!isValidBuildHash(buildHash)) throw new Error("A valid annotation build hash is required.");
+  if (datasetId && !isSafeIdentifier(datasetId)) throw new Error("A valid dataset identifier is required.");
   return {
+    ...(datasetId ? { datasetId } : {}),
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
     buildHash,
     restoreLastView: true,
@@ -346,8 +366,8 @@ export function createEmptyWorkspaceState(buildHash: string): LocalWorkspaceStat
   };
 }
 
-export function decodeWorkspaceState(raw: string | null, currentBuildHash: string): WorkspaceLoadResult {
-  const empty = createEmptyWorkspaceState(currentBuildHash);
+export function decodeWorkspaceState(raw: string | null, currentBuildHash: string, datasetId?: string): WorkspaceLoadResult {
+  const empty = createEmptyWorkspaceState(currentBuildHash, datasetId);
   if (raw === null) return { state: empty, status: "missing" };
   if (new TextEncoder().encode(raw).byteLength > MAX_WORKSPACE_BYTES) {
     return { state: empty, status: "invalid" };
@@ -362,16 +382,21 @@ export function decodeWorkspaceState(raw: string | null, currentBuildHash: strin
     return { state: empty, status: "invalid" };
   }
   if (value.buildHash !== currentBuildHash) return { state: empty, status: "build-mismatch" };
+  if (datasetId && value.datasetId && value.datasetId !== datasetId) return { state: empty, status: "build-mismatch" };
 
   const lastView = normalizedView(value.lastView, currentBuildHash);
   const lastPdfPreset = validatePdfPreset(value.lastPdfPreset, currentBuildHash);
   return {
     status: "ready",
     state: {
+      ...(datasetId || isSafeIdentifier(value.datasetId) ? { datasetId: datasetId ?? value.datasetId as string } : {}),
       schemaVersion: WORKSPACE_SCHEMA_VERSION,
       buildHash: currentBuildHash,
       restoreLastView: typeof value.restoreLastView === "boolean" ? value.restoreLastView : true,
-      ...(lastView ? { lastView } : {}),
+      ...(value.proteinExpansionDefault !== undefined
+        ? { proteinExpansionDefault: normalizeProteinExpansionDefault(value.proteinExpansionDefault) }
+        : {}),
+      ...(lastView ? { lastView: { ...lastView, ...(datasetId ? { datasetId } : {}) } } : {}),
       recents: normalizedReferences(value.recents, MAX_RECENTS),
       favorites: normalizedReferences(value.favorites, MAX_FAVORITES),
       notes: normalizedNotes(value.notes),
@@ -395,16 +420,26 @@ export function serializeWorkspaceState(state: LocalWorkspaceState): string {
   return serialized;
 }
 
-export function loadWorkspaceState(storage: Pick<WorkspaceStorage, "getItem">, buildHash: string): WorkspaceLoadResult {
-  return decodeWorkspaceState(storage.getItem(WORKSPACE_STORAGE_KEY), buildHash);
+export function workspaceStorageKey(buildHash: string, datasetId?: string): string {
+  if (!datasetId) return WORKSPACE_STORAGE_KEY;
+  if (!isSafeIdentifier(datasetId) || !isValidBuildHash(buildHash)) throw new Error("Invalid workspace scope.");
+  return `${WORKSPACE_STORAGE_KEY}:${datasetId}:${buildHash}`;
+}
+
+export function loadWorkspaceState(storage: Pick<WorkspaceStorage, "getItem">, buildHash: string, datasetId?: string): WorkspaceLoadResult {
+  const scoped = storage.getItem(workspaceStorageKey(buildHash, datasetId));
+  if (scoped !== null || !datasetId) return decodeWorkspaceState(scoped, buildHash, datasetId);
+  // Copy-on-first-save migration; leave the old key intact so no saved work is lost.
+  if (datasetId === "human-gencode-v45") return decodeWorkspaceState(storage.getItem(WORKSPACE_STORAGE_KEY), buildHash, datasetId);
+  return decodeWorkspaceState(null, buildHash, datasetId);
 }
 
 export function saveWorkspaceState(storage: Pick<WorkspaceStorage, "setItem">, state: LocalWorkspaceState): void {
-  storage.setItem(WORKSPACE_STORAGE_KEY, serializeWorkspaceState(state));
+  storage.setItem(workspaceStorageKey(state.buildHash, state.datasetId), serializeWorkspaceState(state));
 }
 
-export function clearWorkspaceState(storage: Pick<WorkspaceStorage, "removeItem">): void {
-  storage.removeItem(WORKSPACE_STORAGE_KEY);
+export function clearWorkspaceState(storage: Pick<WorkspaceStorage, "removeItem">, buildHash?: string, datasetId?: string): void {
+  storage.removeItem(buildHash ? workspaceStorageKey(buildHash, datasetId) : WORKSPACE_STORAGE_KEY);
 }
 
 export function createEntityReference(
@@ -564,6 +599,7 @@ export function withLastView(
   }
   const normalized = normalizedView(view, state.buildHash);
   if (!normalized) throw new Error("The browser view is invalid or belongs to another annotation build.");
+  if (state.datasetId && view.datasetId !== state.datasetId) throw new Error("The browser view belongs to another dataset.");
   return { ...state, lastView: normalized };
 }
 

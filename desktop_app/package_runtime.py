@@ -35,16 +35,18 @@ def _tree(source: Path, destination: str) -> dict[str, Path]:
     return files
 
 
-def build_runtime(project_root: Path, archive: Path, *, site_packages: Path | None = None) -> dict:
+def build_runtime(project_root: Path, archive: Path, *, site_packages: Path | None = None, dataset: str | None = None) -> dict:
     from backend.app.main import create_app
 
     root = project_root.expanduser().resolve()
-    app = create_app(project_root=root, full_database_verify=True, full_reference_verify=True)
+    app = create_app(project_root=root, full_database_verify=True, full_reference_verify=True, dataset=dataset)
     package = app.state.runtime_package
     if package.technical_preview:
         raise ValueError("The Mac launcher requires a verified full annotation build, not a fixture.")
     files = _tree(root / "backend/app", "backend/app")
     files["backend/__init__.py"] = root / "backend/__init__.py"
+    files["backend/datasets.py"] = root / "backend/datasets.py"
+    files["backend/data/dataset_profiles.json"] = root / "backend/data/dataset_profiles.json"
     files.update(_tree(root / "frontend/dist", "frontend/dist"))
     files.update(_tree(site_packages or Path(sysconfig.get_paths()["purelib"]), "site-packages"))
     for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
@@ -52,36 +54,53 @@ def build_runtime(project_root: Path, archive: Path, *, site_packages: Path | No
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"Missing regular project license/notice file: {name}")
         files[name] = path
-    for name in ("manifest.json", "validation_report.json", "build_metrics.json", "determinism_receipt.json"):
-        path = package.root / name
-        if path.is_symlink():
-            raise ValueError(f"Unexpected metadata symlink: {name}")
-        if path.is_file():
-            files[f"{PACKAGE}/{name}"] = path
     metadata = lambda path: {"size": path.stat().st_size, "sha256": file_sha256(path)}
-    database = package.database.path
-    external = {f"{PACKAGE}/annotation.sqlite": {**metadata(database), "source": str(database), "kind": "database"}}
-    reference = None
-    if package.reference is not None:
-        ref = package.reference
-        if not ref.fai_public_name:
-            raise ValueError("The optional reference needs a declared FAI index; rebuild it using docs/reference_setup.md.")
-        keys = {"fasta": ref.primary_public_name, "index": ref.fai_public_name, "chrom_sizes": ref.chrom_sizes_public_name}
-        if ref.gzi_public_name:
-            keys["gzi"] = ref.gzi_public_name
-        extra = set(ref.allowed_files) - set(keys.values())
-        if len(extra) > 1:
-            raise ValueError("Optional reference contains undeclared extra artifacts; rebuild using the documented reference adapter.")
-        if extra:
-            keys["aliases"] = next(iter(extra))
-        directory = ref.root.relative_to(package.root).as_posix()
-        outer_reference = package.manifest.get("reference") or {}
-        reference = {"directory": f"{PACKAGE}/{directory}", "manifestName": str(outer_reference.get("manifest", "reference_manifest.json")), "keys": keys}
-        for name, path in sorted(ref.allowed_files.items()):
-            relative = f"external-files/reference/{name}"
-            external[relative] = {"source": str(path), "size": path.stat().st_size, "sha256": ref.checksums[name], "kind": "reference", "publicName": name}
-        # Replace reference metadata during materialization; old identity
-        # receipts/absolute symlinks must never accompany a copied reference.
+    external, packages = {}, []
+    for identifier, context in sorted(app.state.dataset_contexts.items()):
+        selected = context.package
+        if selected.technical_preview:
+            raise ValueError("Mac runtimes may contain only full validated annotation packages.")
+        directory = selected.root.relative_to(root).as_posix()
+        for name in ("manifest.json", "validation_report.json", "build_metrics.json", "determinism_receipt.json"):
+            path = selected.root / name
+            if path.is_symlink():
+                raise ValueError(f"Unexpected metadata symlink: {name}")
+            if path.is_file():
+                files[f"{directory}/{name}"] = path
+        database = selected.database.path
+        external[f"{directory}/annotation.sqlite"] = {**metadata(database), "source": str(database), "kind": "database"}
+        reference = None
+        if selected.reference is not None:
+            ref = selected.reference
+            if not ref.fai_public_name:
+                raise ValueError("The optional reference needs a declared FAI index; rebuild it using docs/reference_setup.md.")
+            keys = {"fasta": ref.primary_public_name, "index": ref.fai_public_name, "chrom_sizes": ref.chrom_sizes_public_name}
+            if ref.gzi_public_name:
+                keys["gzi"] = ref.gzi_public_name
+            extra = set(ref.allowed_files) - set(keys.values())
+            if len(extra) > 1:
+                raise ValueError("Optional reference contains undeclared extra artifacts; rebuild using the documented reference adapter.")
+            if extra:
+                keys["aliases"] = next(iter(extra))
+            outer_reference = selected.manifest.get("reference") or {}
+            prefix = "external-files/reference" if identifier == "human-gencode-v45" else f"external-files/reference/{identifier}"
+            reference = {"directory": f"{directory}/{ref.root.relative_to(selected.root).as_posix()}",
+                "manifestName": str(outer_reference.get("manifest", "reference_manifest.json")),
+                "externalDirectory": prefix, "keys": keys}
+            for name, path in sorted(ref.allowed_files.items()):
+                external[f"{prefix}/{name}"] = {"source": str(path), "size": path.stat().st_size, "sha256": ref.checksums[name], "kind": "reference", "publicName": name}
+        ppi_declaration = None
+        ppi_context = selected.ppi_context
+        if ppi_context is not None and ppi_context.available:
+            assert ppi_context.root is not None and ppi_context.database is not None and ppi_context.manifest is not None
+            ppi_directory = ppi_context.root.relative_to(root).as_posix()
+            files[f"{ppi_directory}/manifest.json"] = ppi_context.root / "manifest.json"
+            ppi_database = ppi_context.database.path
+            external[f"{ppi_directory}/context.sqlite"] = {**metadata(ppi_database), "source": str(ppi_database), "kind": "ppi_context"}
+            ppi_declaration = {"directory": ppi_directory, "contextHash": ppi_context.manifest["context_hash"]}
+        packages.append({"datasetId": identifier, "packageDirectory": directory,
+            "buildHash": selected.build_hash, "assembly": selected.manifest["assembly"], "reference": reference,
+            "ppiContext": ppi_declaration})
     manifest = {
         "schema": SCHEMA,
         "buildHash": package.build_hash,
@@ -90,7 +109,8 @@ def build_runtime(project_root: Path, archive: Path, *, site_packages: Path | No
         "architecture": platform.machine(),
         "bundledFiles": {name: metadata(path) for name, path in sorted(files.items())},
         "externalFiles": external,
-        "reference": reference,
+        "defaultDatasetId": app.state.default_dataset_id,
+        "datasetPackages": packages,
         "frontendIndexSha256": metadata(root / "frontend/dist/index.html")["sha256"],
     }
     manifest["runtimeVersion"] = runtime_version(manifest)
@@ -110,9 +130,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project_root", type=Path)
     parser.add_argument("archive", type=Path)
+    parser.add_argument("--dataset", help="Default installed dataset; all validated installed datasets are bundled.")
     args = parser.parse_args()
     try:
-        manifest = build_runtime(args.project_root, args.archive)
+        manifest = build_runtime(args.project_root, args.archive, dataset=args.dataset)
     except Exception as exc:
         raise SystemExit(f"Runtime packaging failed: {exc}") from exc
     print(f"Packaged local runtime {manifest['runtimeVersion'][:16]} for annotation {manifest['buildHash'][:16]}.")

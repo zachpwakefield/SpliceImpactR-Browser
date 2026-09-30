@@ -1,0 +1,66 @@
+{
+  "buildHash": "human-gencode-v45-fixture-hash",
+  "counts": {"allRecords": 5, "biogridRecords": 4, "ddiRecords": 3, "dmiRecords": 2, "partnerGenes": 3, "records": 4},
+  "datasetId": "human-gencode-v45",
+  "geneId": "ENSG00000185591",
+  "page": {"evidence": "feature-linked", "hasMore": true, "limit": 3, "nextOffset": 3, "offset": 0, "returned": 3},
+  "predictionAvailable": false,
+  "provenance": {
+    "annotationBuildHash": "human-gencode-v45-fixture-hash",
+    "contextHash": "4f5c1da8e104fb87c7af7228bf12c9327fcebb81f39e5341ab17de2e41695d9a",
+    "dataSha256": "49c26d895231f5b90d086accd07d489c022f9c9f5f0942860deabf19d30fae64",
+    "datasetId": "human-gencode-v45",
+    "endpointTokenSetsAggregated": true,
+    "inputSha256": "066f23dd1c7f3a8c66a0d800ccaa0fbf3a51edbc3bf4a37a9fd6d9ea12f277e4",
+    "kind": "gene-level-interaction-context",
+    "networkAnnotationReleaseMatched": false,
+    "notes": "Static gene-level context, not isoform-specific predictions or a claim that every BioGRID record is a direct physical interaction. Source endpoint token sets are aggregated, not paired mechanisms; the resource release/date is not independently verified.",
+    "originalTokenPairingsAvailable": false,
+    "package": "SpliceImpactR",
+    "packageVersion": "1.0.0",
+    "resourceDate": null,
+    "resourceRelease": null,
+    "source": "bundled SpliceImpactR BioGRID-backed DDI/DMI context",
+    "species": "human"
+  },
+  "reason": null,
+  "records": [
+    {
+      "biogrid": true,
+      "ddi": {"flag": true, "focalPfamAccessions": ["PF00001"], "partnerPfamAccessions": ["PF00002"]},
+      "dmi": {"flag": false, "focalTokens": [], "partnerTokens": []},
+      "focalEndpoint": "A",
+      "geneA": "ENSG00000185591",
+      "geneB": "ENSG00000000002",
+      "partner": {"availableInDataset": true, "id": "ENSG00000000002", "symbol": "PARTNER"},
+      "recordId": "ppi:4f5c1da8e104:1",
+      "selfInteraction": false,
+      "sourceEndpoints": {"ddiA": ["PF00001"], "ddiB": ["PF00002"], "dmiA": [], "dmiB": [], "geneA": "ENSG00000185591", "geneB": "ENSG00000000002"}
+    },
+    {
+      "biogrid": true,
+      "ddi": {"flag": false, "focalPfamAccessions": [], "partnerPfamAccessions": []},
+      "dmi": {"flag": true, "focalTokens": ["PF00003", "IPR00001"], "partnerTokens": ["LIG_TEST-with-hyphen", "SM00028"]},
+      "focalEndpoint": "B",
+      "geneA": "ENSG00000000003",
+      "geneB": "ENSG00000185591",
+      "partner": {"availableInDataset": false, "id": "ENSG00000000003", "symbol": "ENSG00000000003"},
+      "recordId": "ppi:4f5c1da8e104:2",
+      "selfInteraction": false,
+      "sourceEndpoints": {"ddiA": [], "ddiB": [], "dmiA": ["LIG_TEST-with-hyphen", "SM00028"], "dmiB": ["PF00003", "IPR00001"], "geneA": "ENSG00000000003", "geneB": "ENSG00000185591"}
+    },
+    {
+      "biogrid": true,
+      "ddi": {"flag": true, "focalPfamAccessions": ["PF00001", "PF00004"], "partnerPfamAccessions": ["PF00001", "PF00004"]},
+      "dmi": {"flag": true, "focalTokens": ["LIG_SELF", "PF00004"], "partnerTokens": ["LIG_SELF", "PF00004"]},
+      "focalEndpoint": "A+B",
+      "geneA": "ENSG00000185591",
+      "geneB": "ENSG00000185591",
+      "partner": {"availableInDataset": true, "id": "ENSG00000185591", "symbol": "SP1"},
+      "recordId": "ppi:4f5c1da8e104:3",
+      "selfInteraction": true,
+      "sourceEndpoints": {"ddiA": ["PF00001"], "ddiB": ["PF00004"], "dmiA": ["LIG_SELF"], "dmiB": ["PF00004"], "geneA": "ENSG00000185591", "geneB": "ENSG00000185591"}
+    }
+  ],
+  "status": "loaded"
+}

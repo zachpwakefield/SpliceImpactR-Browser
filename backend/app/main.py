@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 import io
@@ -12,11 +13,14 @@ from pathlib import Path
 import re
 from typing import Any, Iterable
 
+from backend.datasets import DEFAULT_DATASET_ID, dataset_profiles, get_dataset_profile
+
 from fastapi import FastAPI, HTTPException, Path as PathParameter, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .constants import (
+    APPLICATION_NAME,
     ALLOWED_DETAIL_LEVELS,
     ALLOWED_SEQUENCE_KINDS,
     DEFAULT_SEARCH_LIMIT,
@@ -37,6 +41,7 @@ from .pdf_report import (
     build_pdf_report,
 )
 from .repository import AnnotationRepository
+from .ppi_context import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, load_optional_ppi_context, absent_ppi_context
 
 
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
@@ -82,10 +87,11 @@ def _json_response(
     headers: dict[str, str] | None = None,
 ) -> Response:
     body = _canonical_json(payload)
-    etag = _etag(package.build_hash, body)
+    etag = _etag(package.dataset_id + ":" + package.build_hash, body)
     response_headers = {
         "ETag": etag,
         "Cache-Control": "private, max-age=0, must-revalidate",
+        "X-Transcript-Browser-Dataset": package.dataset_id,
         **(headers or {}),
     }
     if _if_none_match(request, etag):
@@ -105,10 +111,11 @@ def _bytes_response(
     media_type: str,
     headers: dict[str, str] | None = None,
 ) -> Response:
-    etag = _etag(package.build_hash, body)
+    etag = _etag(package.dataset_id + ":" + package.build_hash, body)
     response_headers = {
         "ETag": etag,
         "Cache-Control": "private, max-age=0, must-revalidate",
+        "X-Transcript-Browser-Dataset": package.dataset_id,
         **(headers or {}),
     }
     if _if_none_match(request, etag):
@@ -231,6 +238,7 @@ def _reference_response(
         "Accept-Ranges": "bytes",
         "ETag": etag,
         "Cache-Control": "private, max-age=31536000, immutable",
+        "X-Transcript-Browser-Dataset": package.dataset_id,
     }
     # Preconditions are evaluated before Range.  A matching If-None-Match
     # therefore yields 304 even when the client also supplied a Range header.
@@ -291,6 +299,12 @@ def _reference_response(
     )
 
 
+@dataclass(frozen=True)
+class DatasetContext:
+    package: RuntimePackage
+    repository: AnnotationRepository
+
+
 def create_app(
     *,
     project_root: Path | None = None,
@@ -299,12 +313,14 @@ def create_app(
     dev_fixture: bool = False,
     full_reference_verify: bool = False,
     full_database_verify: bool = False,
+    dataset: str | None = None,
 ) -> FastAPI:
     project_root = (project_root or Path(__file__).resolve().parents[2]).resolve()
-    package_root = Path(
-        package_root
-        or project_root / "data" / "builds" / ("sp1_fixture" if dev_fixture else "gencode_v45")
-    ).expanduser().absolute()
+    if dataset is not None:
+        try:
+            get_dataset_profile(dataset)
+        except ValueError as exc:
+            raise StartupValidationError(str(exc)) from exc
     frontend_dist = Path(
         frontend_dist or project_root / "frontend" / "dist"
     ).expanduser().absolute()
@@ -317,17 +333,43 @@ def create_app(
         raise StartupValidationError(
             "frontend_dist must remain inside project_root"
         ) from exc
-    package = load_runtime_package(
-        package_root,
-        dev_fixture=dev_fixture,
-        full_reference_verify=full_reference_verify,
-        full_database_verify=full_database_verify,
-    )
-    repository = AnnotationRepository(package.database)
+    contexts: dict[str, DatasetContext] = {}
+    unavailable: dict[str, str] = {}
+    if package_root is not None or dev_fixture:
+        package_root = Path(package_root or project_root / "data" / "builds" / "sp1_fixture").expanduser().absolute()
+        package = load_runtime_package(package_root, dev_fixture=dev_fixture, full_reference_verify=full_reference_verify, full_database_verify=full_database_verify)
+        if dataset is not None and package.dataset_id != dataset:
+            raise StartupValidationError(f"Data package is {package.dataset_id}, not requested dataset {dataset}")
+        contexts[package.dataset_id] = DatasetContext(package, AnnotationRepository(package.database))
+        default_id = package.dataset_id
+    else:
+        for identifier, profile in dataset_profiles().items():
+            path = project_root / "data" / "builds" / profile["package_dir"]
+            if not path.exists() and not path.is_symlink():
+                continue
+            try:
+                package = load_runtime_package(path, dev_fixture=False, full_reference_verify=full_reference_verify, full_database_verify=full_database_verify)
+                if package.dataset_id != identifier:
+                    raise StartupValidationError(f"Package directory for {identifier} contains dataset {package.dataset_id}")
+                contexts[identifier] = DatasetContext(package, AnnotationRepository(package.database))
+            except StartupValidationError as exc:
+                unavailable[identifier] = str(exc)
+        default_id = dataset or (DEFAULT_DATASET_ID if DEFAULT_DATASET_ID in contexts else next(iter(contexts), DEFAULT_DATASET_ID))
+        if default_id not in contexts:
+            reason = unavailable.get(default_id, "No validated package is installed; run scripts/setup_local.sh --dataset " + default_id)
+            raise StartupValidationError(f"Dataset {default_id} unavailable: {reason}")
+    for identifier, context in list(contexts.items()):
+        optional_context = load_optional_ppi_context(
+            project_root, context.package.profile, context.package.build_hash,
+            full_integrity=full_database_verify,
+        )
+        contexts[identifier] = DatasetContext(replace(context.package, ppi_context=optional_context), context.repository)
+    package = contexts[default_id].package
+    repository = contexts[default_id].repository
 
     app = FastAPI(
-        title="Local Transcript and Protein-Feature Browser",
-        version="1.1.2",
+        title=f"{APPLICATION_NAME} API",
+        version="1.2.0",
         # FastAPI's default Swagger page imports JavaScript and CSS from a CDN.
         # Keep the machine-readable local schema, but do not expose a runtime
         # network-dependent docs page in this offline application.
@@ -341,6 +383,20 @@ def create_app(
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(LOCAL_ALLOWED_HOSTS))
     app.state.runtime_package = package
     app.state.repository = repository
+    app.state.dataset_contexts = contexts
+    app.state.default_dataset_id = default_id
+    app.state.unavailable_datasets = unavailable
+
+    def selected_context(request: Request) -> tuple[RuntimePackage, AnnotationRepository]:
+        identifier = request.query_params.get("dataset", default_id)
+        if len(request.query_params.getlist("dataset")) > 1:
+            raise HTTPException(400, detail={"code": "AMBIGUOUS_DATASET", "message": "Specify one dataset ID per request."})
+        if identifier not in dataset_profiles():
+            raise HTTPException(400, detail={"code": "UNKNOWN_DATASET", "message": f"Unknown dataset {identifier!r}."})
+        context = contexts.get(identifier)
+        if context is None:
+            raise HTTPException(404, detail={"code": "DATASET_NOT_INSTALLED", "message": f"Dataset {identifier!r} has no validated installed package."})
+        return context.package, context.repository
 
     @app.middleware("http")
     async def local_security_headers(request: Request, call_next: Any) -> Response:
@@ -359,6 +415,7 @@ def create_app(
 
     @app.get("/api/v1/health")
     def health(request: Request) -> Response:
+        package, _repository = selected_context(request)
         return _json_response(
             request,
             package,
@@ -367,11 +424,19 @@ def create_app(
                 "buildHash": package.build_hash,
                 "technicalPreview": package.technical_preview,
                 "readOnly": True,
+                "datasetId": package.dataset_id,
             },
         )
 
+    @app.get("/api/v1/datasets")
+    def datasets(request: Request) -> Response:
+        selected_package, _repository = selected_context(request)
+        entries = [context.package.api_manifest() for context in contexts.values()]
+        return _json_response(request, selected_package, {"defaultDatasetId": default_id, "datasets": entries})
+
     @app.get("/api/v1/manifest")
     def manifest(request: Request) -> Response:
+        package, _repository = selected_context(request)
         return _json_response(request, package, package.api_manifest())
 
     @app.get("/api/v1/search")
@@ -380,6 +445,7 @@ def create_app(
         q: str = Query(min_length=1, max_length=256),
         limit: int = Query(default=DEFAULT_SEARCH_LIMIT, ge=1, le=MAX_SEARCH_LIMIT),
     ) -> Response:
+        package, repository = selected_context(request)
         try:
             payload = repository.search(q, limit)
         except QueryContractError as exc:
@@ -412,6 +478,7 @@ def create_app(
             default=None, alias="bpPerPixel", gt=0, le=1_000_000_000
         ),
     ) -> Response:
+        package, repository = selected_context(request)
         if detail not in ALLOWED_DETAIL_LEVELS:
             raise HTTPException(
                 status_code=400,
@@ -461,6 +528,7 @@ def create_app(
         request: Request,
         identifier: str = PathParameter(min_length=1, max_length=128),
     ) -> Response:
+        package, repository = selected_context(request)
         payload = repository.get_gene(identifier)
         if payload is None:
             raise _not_found("gene", identifier)
@@ -471,9 +539,32 @@ def create_app(
         request: Request,
         identifier: str = PathParameter(min_length=1, max_length=128),
     ) -> Response:
+        package, repository = selected_context(request)
         payload = repository.get_transcript(identifier)
         if payload is None:
             raise _not_found("transcript", identifier)
+        return _json_response(request, package, payload)
+
+    @app.get("/api/v1/genes/{identifier}/ppi-context")
+    def gene_ppi_context(
+        request: Request,
+        identifier: str = PathParameter(min_length=1, max_length=128),
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
+        evidence: str = Query(default="feature-linked", max_length=32),
+    ) -> Response:
+        package, repository = selected_context(request)
+        gene = repository.get_gene_identity(identifier)
+        if gene is None:
+            raise _not_found("gene", identifier)
+        context = package.ppi_context or absent_ppi_context(package.profile)
+        try:
+            payload = context.gene_context(
+                str(gene["id"]), package.database, dataset_id=package.dataset_id,
+                annotation_build_hash=package.build_hash, offset=offset, limit=limit, evidence=evidence,
+            )
+        except QueryContractError as exc:
+            raise _query_error(exc) from exc
         return _json_response(request, package, payload)
 
     @app.get("/api/v1/transcripts/{identifier}/features")
@@ -482,6 +573,7 @@ def create_app(
         identifier: str = PathParameter(min_length=1, max_length=128),
         sources: str | None = Query(default=None, max_length=512),
     ) -> Response:
+        package, repository = selected_context(request)
         try:
             payload = repository.get_features(identifier, _parse_sources(sources))
         except QueryContractError as exc:
@@ -496,6 +588,7 @@ def create_app(
         identifier: str = PathParameter(min_length=1, max_length=128),
         kind: str = Query(default="protein"),
     ) -> Response:
+        package, repository = selected_context(request)
         if kind not in ALLOWED_SEQUENCE_KINDS:
             raise HTTPException(
                 status_code=400,
@@ -510,7 +603,8 @@ def create_app(
         return _json_response(request, package, payload)
 
     @app.post("/api/v1/report/pdf")
-    def transcript_pdf_report(specification: PdfReportRequest) -> Response:
+    def transcript_pdf_report(request: Request, specification: PdfReportRequest) -> Response:
+        package, repository = selected_context(request)
         if specification.build_hash != package.build_hash:
             raise HTTPException(
                 status_code=409,
@@ -689,13 +783,14 @@ def create_app(
         safe_symbol = re.sub(
             r"[^A-Za-z0-9_.-]+", "-", str(gene_payload.get("symbol") or gene_payload.get("id"))
         ).strip("-.") or "gene"
-        filename = f"{safe_symbol}_{len(items)}-transcript-report.pdf"
+        filename = f"{safe_symbol}_{len(items)}-transcript-report_{package.dataset_id}_{package.build_hash[:12]}.pdf"
         return Response(
             content=body,
             media_type="application/pdf",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
                 "Cache-Control": "no-store",
+                "X-Transcript-Browser-Dataset": package.dataset_id,
             },
         )
 
@@ -704,6 +799,7 @@ def create_app(
         request: Request,
         feature_id: str = PathParameter(min_length=1, max_length=256),
     ) -> Response:
+        package, repository = selected_context(request)
         payload = repository.get_feature(feature_id)
         if payload is None:
             raise _not_found("feature", feature_id)
@@ -722,6 +818,7 @@ def create_app(
         end0: int | None = Query(default=None, gt=0),
         sources: str | None = Query(default=None, max_length=512),
     ) -> Response:
+        package, repository = selected_context(request)
         if format not in {"json", "tsv"}:
             raise HTTPException(400, detail={"code": "INVALID_EXPORT_FORMAT", "message": "format must be json or tsv."})
         entity = entity.lower()
@@ -791,13 +888,19 @@ def create_app(
         else:
             raise HTTPException(400, detail={"code": "INVALID_EXPORT_ENTITY", "message": "entity must be gene, transcript, feature, or region."})
 
+        provenance = {"datasetId": package.dataset_id, "buildHash": package.build_hash, "species": package.profile["species"], "gencodeRelease": package.profile["gencode_release"], "ensemblRelease": package.profile["ensembl_release"], "assembly": package.profile["assembly"]}
+        filename += f"_{package.dataset_id}_{package.build_hash[:12]}"
         disposition = {"Content-Disposition": f'attachment; filename="{filename}.{format}"'}
         if format == "json":
-            body = _canonical_json(payload)
+            body = _canonical_json({**payload, "_provenance": provenance})
             if len(records) > MAX_EXPORT_ROWS:
                 raise HTTPException(413, detail={"code": "EXPORT_LIMIT_EXCEEDED", "message": f"Export exceeds {MAX_EXPORT_ROWS:,} rows."})
             return _bytes_response(request, package, body, "application/json", disposition)
-        return _bytes_response(request, package, _tsv_bytes(records), "text/tab-separated-values", disposition)
+        records = [{**record, **{"_" + key: value for key, value in provenance.items()}} for record in records]
+        # An empty scientific result still needs detached-file provenance, but
+        # must not fabricate a feature/transcript row just to carry metadata.
+        body = _tsv_bytes(records) if records else b"# transcript-browser-provenance\t" + _canonical_json(provenance)
+        return _bytes_response(request, package, body, "text/tab-separated-values", disposition)
 
     @app.api_route(
         "/reference/{public_name:path}",
@@ -805,6 +908,7 @@ def create_app(
         include_in_schema=False,
     )
     def reference_file(request: Request, public_name: str) -> Response:
+        package, _repository = selected_context(request)
         if len(public_name) > 256:
             raise HTTPException(status_code=404, detail="Not found")
         return _reference_response(request, package, public_name)
@@ -828,7 +932,7 @@ def create_app(
             if index.is_file():
                 return FileResponse(index, media_type="text/html")
         return HTMLResponse(
-            "<!doctype html><meta charset='utf-8'><title>Transcript Browser API</title>"
+            f"<!doctype html><meta charset='utf-8'><title>{APPLICATION_NAME} API</title>"
             "<h1>Frontend bundle is not built</h1>"
             "<p>The read-only API is available under <code>/api/v1/</code>.</p>",
             status_code=503,

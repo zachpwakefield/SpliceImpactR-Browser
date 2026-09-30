@@ -1,4 +1,9 @@
+import { APPLICATION_NAME } from "./application";
+
 export interface DiagnosticsSnapshot {
+  datasetId?: string;
+  species?: string;
+  featureStatus?: readonly string[];
   applicationVersion: string;
   buildHash: string;
   gencodeRelease: string;
@@ -34,14 +39,17 @@ export function safeServiceOrigin(value: string): string {
 export function formatDiagnostics(snapshot: DiagnosticsSnapshot): string {
   const capabilityText = [...snapshot.capabilities].sort().map(oneLine).join(", ") || "none declared";
   return [
-    "Local Transcript Browser diagnostics",
+    `${APPLICATION_NAME} diagnostics`,
     `Application version: ${oneLine(snapshot.applicationVersion)}`,
     `Annotation build: ${oneLine(snapshot.buildHash)}`,
+    ...(snapshot.datasetId ? [`Dataset: ${oneLine(snapshot.datasetId)}`] : []),
+    ...(snapshot.species ? [`Species: ${oneLine(snapshot.species)}`] : []),
     `GENCODE release: ${oneLine(snapshot.gencodeRelease)}`,
     `Ensembl release: ${oneLine(snapshot.ensemblRelease)}`,
     `Assembly: ${oneLine(snapshot.assembly)}`,
     `Schema version: ${oneLine(snapshot.schemaVersion)}`,
     `Capabilities: ${capabilityText}`,
+    ...(snapshot.featureStatus?.length ? [`Feature sources: ${snapshot.featureStatus.map(oneLine).join("; ")}`] : []),
     `PDF reports: ${snapshot.pdfAvailable ? "available" : "unavailable"}`,
     `Current gene: ${oneLine(snapshot.currentGene || "none")}`,
     `Current transcript: ${oneLine(snapshot.currentTranscript || "none")}`,
@@ -52,4 +60,3 @@ export function formatDiagnostics(snapshot: DiagnosticsSnapshot): string {
     `Offline status: ${snapshot.externalResourceCount === 0 ? "loopback-only; no external resources observed" : "external resources observed"}`,
   ].join("\n");
 }
-

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 EXPECTED_SCHEMA_VERSION = "1.1.0"
+APPLICATION_NAME = "SpliceImpactR Browser"
 
 # Region responses must remain bounded even when a client bypasses the UI.
 MAX_REGION_SPAN_BP = 25_000_000

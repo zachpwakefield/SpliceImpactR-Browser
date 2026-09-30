@@ -6,7 +6,7 @@ options(stringsAsFactors = FALSE)
 options(timeout = max(600, getOption("timeout", 60)))
 
 parse_args <- function(values) {
-  allowed <- c("output", "base-dir", "gtf", "transcript-fa", "protein-fa", "force", "skip-exon")
+  allowed <- c("output", "dataset", "base-dir", "gtf", "transcript-fa", "protein-fa", "force", "skip-exon", "list-datasets")
   result <- list()
   index <- 1L
   while (index <= length(values)) {
@@ -14,6 +14,8 @@ parse_args <- function(values) {
     if (key %in% c("--help", "-h")) {
       cat(paste(
         "Usage: Rscript scripts/prepare_spliceimpactr_cache.R --output DIR [options]",
+        "  --dataset ID         Reviewed species/GENCODE/Ensembl profile (default: human-gencode-v45)",
+        "  --list-datasets      Print reviewed profiles and exit",
         "  --base-dir DIR       Download/query cache (default: sibling spliceimpactr-cache)",
         "  --gtf FILE --transcript-fa FILE --protein-fa FILE   Use all three existing raw files",
         "  --force              Refresh remote feature queries and local outputs",
@@ -27,7 +29,7 @@ parse_args <- function(values) {
     if (!startsWith(key, "--") || !name %in% allowed || name %in% names(result)) {
       stop("Unknown or repeated argument: ", key, ". Use --help.", call. = FALSE)
     }
-    if (name %in% c("force", "skip-exon")) {
+    if (name %in% c("force", "skip-exon", "list-datasets")) {
       result[[name]] <- TRUE
       index <- index + 1L
     } else {
@@ -43,11 +45,26 @@ parse_args <- function(values) {
 
 args <- parse_args(commandArgs(trailingOnly = TRUE))
 get_arg <- function(name, default = NULL) if (is.null(args[[name]])) default else args[[name]]
-if (is.null(args$output) || !nzchar(args$output)) stop("--output DIR is required.", call. = FALSE)
 
 script_flag <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 script_path <- normalizePath(sub("^--file=", "", script_flag[[1L]]), mustWork = TRUE)
 project_root <- dirname(dirname(script_path))
+dataset_adapter_path <- file.path(project_root, "r", "datasets.R")
+source(dataset_adapter_path)
+profile_path <- file.path(project_root, "backend", "data", "dataset_profiles.json")
+if (!requireNamespace("jsonlite", quietly = TRUE)) {
+  stop("Missing R package: jsonlite. Run ./scripts/install_spliceimpactr.sh first.", call. = FALSE)
+}
+registry <- read_browser_dataset_profiles(profile_path)
+if (isTRUE(args$`list-datasets`)) {
+  for (profile in registry$profiles) {
+    cat(profile$dataset_id, " | ", profile$species, " | GENCODE ", profile$gencode_release,
+        " | Ensembl ", profile$ensembl_release, " | ", profile$assembly, "\n", sep = "")
+  }
+  quit(status = 0L)
+}
+if (is.null(args$output) || !nzchar(args$output)) stop("--output DIR is required.", call. = FALSE)
+profile <- browser_dataset_profile(registry, get_arg("dataset", registry$default_dataset_id))
 adapter_path <- file.path(project_root, "r", "browser_annotation.R")
 source(adapter_path)
 feature_adapter_path <- file.path(project_root, "r", "archive_features.R")
@@ -69,86 +86,46 @@ dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
 force <- isTRUE(args$force)
 
-raw_names <- c(
-  gtf = "gencode.v45.annotation.gtf.gz",
-  transcript = "gencode.v45.pc_transcripts.fa.gz",
-  translation = "gencode.v45.pc_translations.fa.gz"
-)
-raw_md5 <- c(
-  gtf = "b6eeb6c9791b7a43a5504a654ff09d9a",
-  transcript = "229d2da3b0dc7e83dd8ae69034be1169",
-  translation = "cf7b19def48b2235abde68df419b4b03"
-)
-explicit <- c(gtf = get_arg("gtf", NA_character_), transcript = get_arg("transcript-fa", NA_character_), translation = get_arg("protein-fa", NA_character_))
+explicit <- c(gtf = get_arg("gtf", NA_character_), transcripts = get_arg("transcript-fa", NA_character_), translations = get_arg("protein-fa", NA_character_))
 if (anyNA(explicit) && !all(is.na(explicit))) {
   stop("Provide all three of --gtf, --transcript-fa, and --protein-fa, or none.", call. = FALSE)
 }
 
-message("[1/4] Resolving the unmodified GENCODE v45 files")
-bfc <- NULL
-raw_receipts <- list()
-for (key in names(raw_names)) {
-  filename <- raw_names[[key]]
-  destination <- file.path(output_dir, filename)
-  if (!is.na(explicit[[key]])) {
-    input <- normalizePath(explicit[[key]], mustWork = TRUE)
-  } else if (file.exists(destination) && identical(unname(tools::md5sum(destination)), raw_md5[[key]])) {
-    input <- destination
-  } else {
-    if (is.null(bfc)) bfc <- BiocFileCache::BiocFileCache(file.path(base_dir, "BiocFileCache"), ask = FALSE)
-    cache_key <- paste0("transcript-browser/gencode/v45/", filename)
-    hits <- BiocFileCache::bfcquery(bfc, cache_key, field = "rname", exact = TRUE)
-    if (!nrow(hits)) {
-      downloaded <- BiocFileCache::bfcadd(bfc, rname = cache_key,
-        fpath = paste0("https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_45/", filename), rtype = "web")
-      input <- unname(downloaded[[1L]])
-    } else {
-      if (nrow(hits) != 1L) stop("Ambiguous raw download cache entry: ", filename, call. = FALSE)
-      input <- unname(BiocFileCache::bfcpath(bfc, hits$rid))
-      if (!file.exists(input) || !identical(unname(tools::md5sum(input)), raw_md5[[key]])) {
-        BiocFileCache::bfcdownload(bfc, hits$rid, ask = FALSE)
-        input <- unname(BiocFileCache::bfcpath(bfc, hits$rid))
-      }
-    }
-  }
-  actual <- unname(tools::md5sum(input))
-  if (!identical(actual, raw_md5[[key]])) stop("Wrong GENCODE bytes for ", filename, ": expected MD5 ", raw_md5[[key]], "; found ", actual, call. = FALSE)
-  if (!identical(normalizePath(input), normalizePath(destination, mustWork = FALSE))) {
-    if (!file.copy(input, destination, overwrite = TRUE)) stop("Cannot copy ", filename, call. = FALSE)
-  }
-  raw_receipts[[filename]] <- list(file = filename, md5 = actual, size = unname(file.info(destination)$size))
-}
+message("[1/4] Resolving unmodified ", profile$label, " files (Ensembl ", profile$ensembl_release, ")")
+raw <- browser_resolve_raw_assets(profile, output_dir, base_dir, explicit)
+raw_receipts <- raw$receipts
 
 message("[2/4] Preparing every source transcript, including unscored TSLs and incomplete CDS models")
-annotation <- read_browser_annotation(file.path(output_dir, raw_names[["gtf"]]))
-if (annotation$inventory$genes != 63187L || annotation$inventory$transcripts != 252930L) {
-  stop("The GENCODE v45 gene/transcript inventory is incomplete.", call. = FALSE)
-}
-sequences <- read_browser_proteins(file.path(output_dir, raw_names[["translation"]]))
+annotation <- read_browser_annotation(raw$paths[["gtf"]], profile)
+sequences <- read_browser_proteins(raw$paths[["translations"]], profile)
 sources <- c("interpro", "pfam", "cdd", "tmhmm", "signalp", "mobidblite", "elm")
 producer <- list(
   package = "SpliceImpactR", version = as.character(utils::packageVersion("SpliceImpactR")),
   bioconductor_version = as.character(BiocManager::version()),
   r_version = as.character(getRversion()), package_license = "GPL-3",
-  adapter = "complete-raw-gtf/v1"
+  adapter = "complete-raw-gtf/v2"
 )
 code_hashes <- list(
   prepare = digest::digest(file = script_path, algo = "sha256"),
   annotation_adapter = digest::digest(file = adapter_path, algo = "sha256"),
-  feature_adapter = digest::digest(file = feature_adapter_path, algo = "sha256")
+  feature_adapter = digest::digest(file = feature_adapter_path, algo = "sha256"),
+  dataset_adapter = digest::digest(file = dataset_adapter_path, algo = "sha256"),
+  dataset_profiles = digest::digest(file = profile_path, algo = "sha256")
 )
 feature_query_policy <- list(
   biomart_transcript_biotype_filter = NULL,
-  provider = "explicit-release-111-archive/public-biomaRt",
+  provider = paste0("explicit-release-", profile$ensembl_release, "-archive/public-biomaRt"),
   normalization_api = "SpliceImpactR::get_manual_features",
   annotation_models_removed = FALSE,
-  test_fixture = FALSE, combine_overlaps = FALSE,
-  note = "BioMart queries have no biotype or TSL selector; no feature result is required to retain a transcript."
+  test_fixture = FALSE, combine_overlaps = FALSE, source_coordinates_preserved = TRUE,
+  note = paste("BioMart queries have no biotype or TSL selector; no feature result is required to retain a transcript.",
+               "The validated SpliceImpactR 1.0.0 get_protein_features path filters biotypes, collapses coincident accessions, and clips intervals;",
+               "the public biomaRt/get_manual_features adapter preserves original source intervals and distinct accessions.")
 )
 signature <- digest::digest(jsonlite::toJSON(list(
   raw_inputs = raw_receipts, producer = producer, code_hashes = code_hashes,
   annotation_policy = BROWSER_ANNOTATION_POLICY, inventory = annotation$inventory,
-  ensembl_release = 111L
+  dataset = profile
 ), auto_unbox = TRUE, null = "null"), algo = "sha256", serialize = FALSE)
 
 message("[3/4] Querying seven SpliceImpactR feature sources against the complete annotation")
@@ -170,14 +147,17 @@ for (source_name in sources) {
     features <- readRDS(output_path)
   } else {
     message("  [query] ", source_name)
-    if (is.null(mart)) mart <- browser_archive_mart()
+    if (is.null(mart)) mart <- browser_archive_mart(profile)
     features <- browser_archive_features(source_name, annotation$annotations, sequences,
-      mart, base_dir, force = force)
+      mart, base_dir, profile, force = force)
   }
   retrieval <- if (reusable) old$retrieval else attr(features, "browser_retrieval")
   features <- normalize_browser_features(features, source_name)
-  if (source_name %in% c("interpro", "pfam") && !nrow(features)) {
-    stop("The full human ", source_name, " query returned no features; retry preparation.", call. = FALSE)
+  if (is.null(retrieval$status) || !retrieval$status %in% c("available", "available-empty", "unavailable")) {
+    stop("Feature source lacks an explicit availability status: ", source_name, call. = FALSE)
+  }
+  if (source_name %in% c("interpro", "pfam") && !identical(retrieval$status, "unavailable") && !nrow(features)) {
+    stop("The full ", profile$species, " ", source_name, " query returned no features; retry preparation.", call. = FALSE)
   }
   if (!reusable) {
     temporary <- tempfile(pattern = ".features-", tmpdir = output_dir)
@@ -185,6 +165,8 @@ for (source_name in sources) {
     if (!file.rename(temporary, output_path)) stop("Cannot publish ", basename(output_path), call. = FALSE)
   }
   receipt <- browser_feature_receipt(output_path, features)
+  receipt$status <- retrieval$status
+  if (!is.null(retrieval$reason)) receipt$reason <- retrieval$reason
   receipt$retrieval <- retrieval
   write_browser_json(c(list(signature = signature), receipt), receipt_path)
   feature_summary[[source_name]] <- receipt
@@ -203,10 +185,12 @@ if (!isTRUE(args$`skip-exon`)) {
   exon_summary <- list(file = basename(exon_path), rows = nrow(exon_features), sha256 = digest::digest(file = exon_path, algo = "sha256"))
 }
 write_browser_json(list(
-  schema = "transcript-browser-spliceimpactr-cache/v2",
-  gencode_release = 45L, ensembl_release = 111L, assembly = "GRCh38.p14",
+  schema = "transcript-browser-spliceimpactr-cache/v3",
+  dataset_id = profile$dataset_id, species = profile$species,
+  gencode_release = profile$gencode_release, ensembl_release = profile$ensembl_release, assembly = profile$assembly,
+  biomart = profile$biomart,
   annotation_policy = BROWSER_ANNOTATION_POLICY, annotation_inventory = annotation$inventory,
-  raw_inputs = raw_receipts, feature_sources = feature_summary,
+  raw_inputs = raw_receipts, raw_accession = raw$accession, feature_sources = feature_summary,
   exon_features = exon_summary, producer = producer, feature_query_policy = feature_query_policy, code_hashes = code_hashes,
   required_feature_columns = BROWSER_FEATURE_COLUMNS,
   note = "All paths are relative. Counts and digests describe this preparation, not a workstation-specific cache."

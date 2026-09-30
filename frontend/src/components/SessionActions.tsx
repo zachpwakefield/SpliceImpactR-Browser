@@ -1,5 +1,7 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { encodeSession, MAX_SESSION_BYTES, parsePortableSession } from "../lib/session";
+import { datasetUrl } from "../api";
+import { APPLICATION_FILE_PREFIX } from "../lib/application";
 import type { EntityKey, UserAnnotation } from "../lib/workspaceStore";
 import type { BrowserViewState, BuildManifest } from "../types";
 
@@ -24,7 +26,7 @@ export function SessionActions({ manifest, view, annotations, fallback, onSavePd
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `transcript-browser-${manifest.buildHash.slice(0, 12)}.json`;
+    anchor.download = `${APPLICATION_FILE_PREFIX}-${manifest.buildHash.slice(0, 12)}.json`;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
     onMessage("Session JSON exported with the required local build hash and build-scoped user annotations.");
@@ -61,8 +63,8 @@ export function SessionActions({ manifest, view, annotations, fallback, onSavePd
 
   return (
     <span className="session-actions" aria-label="View and session actions">
-      <a href={`/api/v1/export?entity=region&chr=${encodeURIComponent(view.locus.chrom)}&start0=${view.locus.start0}&end0=${view.locus.end0}&format=json`}>Locus JSON</a>
-      <a href={`/api/v1/export?entity=region&chr=${encodeURIComponent(view.locus.chrom)}&start0=${view.locus.start0}&end0=${view.locus.end0}&format=tsv`}>Locus TSV</a>
+      <a href={datasetUrl(`/api/v1/export?entity=region&chr=${encodeURIComponent(view.locus.chrom)}&start0=${view.locus.start0}&end0=${view.locus.end0}&format=json`, view.datasetId)}>Locus JSON</a>
+      <a href={datasetUrl(`/api/v1/export?entity=region&chr=${encodeURIComponent(view.locus.chrom)}&start0=${view.locus.start0}&end0=${view.locus.end0}&format=tsv`, view.datasetId)}>Locus TSV</a>
       <button type="button" onClick={onSavePdf}>Save PDF</button>
       <button type="button" disabled={quickPdfBusy} onClick={onQuickPdf}>{quickPdfBusy ? "Building PDF…" : "Quick PDF"}</button>
       <button type="button" onClick={() => {

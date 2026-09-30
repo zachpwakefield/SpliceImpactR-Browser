@@ -11,6 +11,7 @@ import {
   type FeatureClass,
   type FeatureSource,
   type Gene,
+  type ProteinExpansionDefault,
   type RowDensity,
   type TranscriptFlag,
 } from "../types";
@@ -30,6 +31,7 @@ interface FilterBarProps {
   rowDensity: RowDensity;
   canvasKeyboardShortcuts: boolean;
   restoreLastView: boolean;
+  proteinExpansionDefault: ProteinExpansionDefault;
   onToggleSource: (source: FeatureSource) => void;
   onToggleFeatureClass: (featureClass: FeatureClass) => void;
   onToggleTranscriptBiotype: (biotype: string) => void;
@@ -38,6 +40,7 @@ interface FilterBarProps {
   onRowDensityChange: (density: RowDensity) => void;
   onCanvasKeyboardShortcutsChange: (enabled: boolean) => void;
   onRestoreLastViewChange: (enabled: boolean) => void;
+  onProteinExpansionDefaultChange: (preference: ProteinExpansionDefault) => void;
   onClearSavedWorkspace: () => void;
 }
 
@@ -78,6 +81,7 @@ export function FilterBar({
   rowDensity,
   canvasKeyboardShortcuts,
   restoreLastView,
+  proteinExpansionDefault,
   onToggleSource,
   onToggleFeatureClass,
   onToggleTranscriptBiotype,
@@ -86,6 +90,7 @@ export function FilterBar({
   onRowDensityChange,
   onCanvasKeyboardShortcutsChange,
   onRestoreLastViewChange,
+  onProteinExpansionDefaultChange,
   onClearSavedWorkspace,
 }: FilterBarProps) {
   const sourceCounts = new Map<FeatureSource, number>(FEATURE_SOURCES.map((source) => [source, 0]));
@@ -135,21 +140,24 @@ export function FilterBar({
             const meta = SOURCE_META[source];
             const count = sourceCounts.get(source) ?? 0;
             const checked = activeSources.includes(source);
+            const availability = manifest.featureAvailability?.[source];
+            const unavailable = availability?.status === "unavailable";
             return (
               <label
                 key={source}
                 className={`source-chip ${checked ? "active" : ""} ${count === 0 ? "empty" : ""}`}
-                title={`${meta.description}; ${count} loaded record${count === 1 ? "" : "s"} at ${gene.symbol}`}
+                title={unavailable ? `${meta.label} unavailable for this dataset: ${availability?.reason ?? "source not provided by this release"}` : `${meta.description}; ${count} loaded record${count === 1 ? "" : "s"} at ${gene.symbol}${availability?.status === "available-empty" ? "; successfully queried: no source records in this dataset" : ""}`}
               >
                 <input
                   type="checkbox"
                   checked={checked}
+                  disabled={unavailable}
                   onChange={() => onToggleSource(source)}
-                  aria-label={`${checked ? "Hide" : "Show"} ${meta.label}, ${count} loaded records`}
+                  aria-label={unavailable ? `${meta.label} unavailable for this dataset` : `${checked ? "Hide" : "Show"} ${meta.label}, ${count} loaded records`}
                 />
                 <span className="source-swatch" style={{ backgroundColor: meta.color }} aria-hidden="true" />
                 <span>{meta.label}</span>
-                <small>{count}</small>
+                <small>{unavailable ? "unavailable" : count}</small>
               </label>
             );
           })}
@@ -238,6 +246,33 @@ export function FilterBar({
           <small>{rowDensity === "compact" ? "Compact" : "Comfort"}</small>
         </summary>
         <div className="filter-menu-panel view-filter-panel">
+          <fieldset>
+            <legend>Default protein tracks</legend>
+            {([
+              ["all", "All translated transcripts"],
+              ["top", "Top translated transcript"],
+              ["none", "None"],
+            ] as const).map(([value, label]) => (
+              <label className="filter-option radio-option" key={value}>
+                <input
+                  type="radio"
+                  name="protein-expansion-default"
+                  checked={proteinExpansionDefault === value}
+                  onChange={() => onProteinExpansionDefaultChange(value)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+            <button type="button" onClick={() => onProteinExpansionDefaultChange(proteinExpansionDefault)}>
+              Apply default to current gene
+            </button>
+            <p className="context-retention-note">
+              Applies now and when opening a gene. Top means the first translated
+              transcript in annotation order, not a biological ranking. All loads
+              tracks as you scroll; rows with no source calls remain explicit.
+              Saved views and links keep their own expansion state.
+            </p>
+          </fieldset>
           <fieldset>
             <legend>Row density</legend>
             <label className="filter-option radio-option">

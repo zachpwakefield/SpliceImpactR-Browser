@@ -50,7 +50,7 @@ class PdfReportApiTests(unittest.TestCase):
             self.assertEqual(response.headers["cache-control"], "no-store")
             self.assertEqual(
                 response.headers["content-disposition"],
-                'attachment; filename="SP1_2-transcript-report.pdf"',
+                'attachment; filename="SP1_2-transcript-report_human-gencode-v45_fixture-buil.pdf"',
             )
             self.assertTrue(response.content.startswith(b"%PDF-"))
             self.assertTrue(response.content.rstrip().endswith(b"%%EOF"))
@@ -59,8 +59,11 @@ class PdfReportApiTests(unittest.TestCase):
             self.assertGreaterEqual(page_count, 3)
             self.assertLessEqual(page_count, 100)
             reader = PdfReader(BytesIO(response.content))
+            self.assertEqual(reader.metadata.author, "SpliceImpactR Browser")
             self.assertEqual(len(reader.pages), page_count)
             extracted = "\n".join(page.extract_text() or "" for page in reader.pages)
+            self.assertIn("SpliceImpactR Browser", extracted)
+            self.assertNotIn("LOCAL TRANSCRIPT BROWSER", extracted)
             self.assertIn("Transcript summary", extracted)
             self.assertIn("Exon and CDS structure", extracted)
             self.assertIn("Protein annotations", extracted)

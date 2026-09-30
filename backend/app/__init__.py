@@ -1,4 +1,4 @@
-"""FastAPI runtime for the Local Transcript Browser."""
+"""FastAPI runtime for SpliceImpactR Browser."""
 
 from typing import Any
 

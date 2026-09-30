@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   buildTranscriptComparison,
   type ComparisonCell,
@@ -8,12 +8,18 @@ import {
   type ComparisonExportFormat,
 } from "../lib/comparisonExport";
 import type { TranscriptOrderPlacement } from "../lib/transcriptOrder";
-import type { FeatureSource, Transcript } from "../types";
+import type { BuildManifest, FeatureSource, ProteinFeature, Transcript } from "../types";
+import { FeatureComparisonPanel } from "./FeatureComparisonPanel";
 
 export interface ComparisonPanelProps {
   selectedTranscript: Transcript;
   comparisonTranscript?: Transcript;
   activeSources: readonly FeatureSource[];
+  featureAvailability?: BuildManifest["featureAvailability"];
+  onInspectFeature?: (feature: ProteinFeature) => void;
+  onRetryFeatureComparison?: () => void;
+  onExportFeatureComparison?: (format: ComparisonExportFormat) => void;
+  ppiPanel?: ReactNode;
   comparisonPinned: boolean;
   pinnedTranscriptCount?: number;
   onSetComparison: () => void;
@@ -52,6 +58,11 @@ export function ComparisonPanel({
   selectedTranscript,
   comparisonTranscript,
   activeSources,
+  featureAvailability,
+  onInspectFeature,
+  onRetryFeatureComparison,
+  onExportFeatureComparison,
+  ppiPanel,
   comparisonPinned,
   pinnedTranscriptCount,
   onSetComparison,
@@ -64,12 +75,13 @@ export function ComparisonPanel({
 }: ComparisonPanelProps) {
   const headingId = useId();
   const exportLegendId = useId();
+  const featureSection = useRef<HTMLDivElement>(null), ppiSection = useRef<HTMLDivElement>(null), factsSection = useRef<HTMLDivElement>(null);
   const [includePinned, setIncludePinned] = useState(false);
   const comparison = useMemo(
     () => comparisonTranscript
-      ? buildTranscriptComparison(selectedTranscript, comparisonTranscript, activeSources)
+      ? buildTranscriptComparison(selectedTranscript, comparisonTranscript, activeSources, featureAvailability)
       : undefined,
-    [activeSources, comparisonTranscript, selectedTranscript],
+    [activeSources, comparisonTranscript, selectedTranscript, featureAvailability],
   );
   const pinnedAvailable = pinnedTranscriptCount === undefined || pinnedTranscriptCount > 0;
   const includePinnedForExport = pinnedAvailable && includePinned;
@@ -84,7 +96,7 @@ export function ComparisonPanel({
         <div className="comparison-empty-state" role="status" aria-labelledby={headingId}>
           <p>
             <strong>{selectedTranscript.name}</strong> is selected. Choose a different transcript from this gene
-            to compare structure, support, tags, and loaded feature counts.
+            to compare protein-feature calls, structure, support, and tags.
           </p>
           <button type="button" onClick={onSetComparison}>Choose comparison transcript</button>
         </div>
@@ -127,7 +139,26 @@ export function ComparisonPanel({
         </button>
       </div>
 
-      <div className="comparison-table-scroll">
+      <nav className="comparison-jump-actions" aria-label="Compare section shortcuts">
+        <button type="button" onClick={() => featureSection.current?.scrollIntoView({ block: "start" })}>Go to protein features</button>
+        {ppiPanel && <button type="button" onClick={() => ppiSection.current?.scrollIntoView({ block: "start" })}>Go to PPI context</button>}
+        <button type="button" onClick={() => factsSection.current?.scrollIntoView({ block: "start" })}>Go to transcript facts</button>
+      </nav>
+
+      <div ref={featureSection} className="comparison-section-anchor"><FeatureComparisonPanel
+        key={`${selectedTranscript.id}:${comparisonTranscript.id}`}
+        selectedTranscript={selectedTranscript}
+        comparisonTranscript={comparisonTranscript}
+        sources={activeSources}
+        availability={featureAvailability}
+        onInspectFeature={onInspectFeature}
+        onRetry={onRetryFeatureComparison}
+        onExport={onExportFeatureComparison}
+      /></div>
+
+      {ppiPanel && <div ref={ppiSection} className="comparison-section-anchor">{ppiPanel}</div>}
+
+      <div ref={factsSection} className="comparison-table-scroll comparison-section-anchor">
         <table className="comparison-table">
           <caption className="sr-only">
             Transcript comparison between selected {selectedTranscript.versionedId} and comparison {comparisonTranscript.versionedId}

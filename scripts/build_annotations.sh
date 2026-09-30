@@ -6,9 +6,11 @@ if [[ $# -eq 0 || "$1" == --* ]]; then
   cat >&2 <<'USAGE'
 Usage: ./scripts/build_annotations.sh CACHE_DIR [--reference-fasta PATH] [builder options]
 
-CACHE_DIR must contain the GENCODE v45 GTF/FASTA files and the seven RDS
-protein-feature tables.  The optional PATH is a checksum-pinned local Ensembl
-GRCh38.p14 FASTA; its .fai index must be next to it.  Both paths are
+CACHE_DIR must contain the selected profile's raw GTF/FASTA files and seven
+RDS protein-feature tables. Use --dataset human-gencode-v50 or
+--dataset mouse-gencode-m39; the default is human-gencode-v45.
+The optional PATH is a checksum-pinned local Ensembl FASTA matching the
+selected assembly; its .fai index must be next to it. Both paths are
 intentionally supplied by the caller so this script never embeds a
 workstation-specific location.
 USAGE

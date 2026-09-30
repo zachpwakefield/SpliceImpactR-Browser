@@ -63,6 +63,9 @@ test("ComparisonPanel exposes textual differences, semantic value states, tags, 
   assert.match(html, /aria-pressed="true">Unpin comparison/);
   assert.match(html, /Place comparison directly above selected/);
   assert.match(html, /Place comparison directly below selected/);
+  assert.match(html, /Compare section shortcuts/);
+  assert.match(html, /Go to protein features/);
+  assert.match(html, /Go to transcript facts/);
   assert.match(html, /Include pinned transcripts \(2\)/);
   assert.match(html, /Export CSV/);
   assert.match(html, /Export TSV/);

@@ -233,6 +233,7 @@ export function LocalAnnotationsEditor({
       aria-label={ariaLabel}
       data-entity-key={entityKey}
       data-annotation-status={status}
+      data-unsaved-annotation={normalizedSignature !== lastSavedSignature.current || Boolean(newTag.trim()) || status === "saving" || status === "deleting"}
     >
       <header>
         <div>

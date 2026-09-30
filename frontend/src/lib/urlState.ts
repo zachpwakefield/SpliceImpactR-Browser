@@ -11,13 +11,14 @@ import {
   type TranscriptFlag,
 } from "../types";
 import { formatLocus, parseLocus } from "./coordinates";
-import { MAX_EXPANDED_TRANSCRIPTS } from "./navigation";
+import { MAX_COLLAPSED_PROTEIN_TRANSCRIPTS, MAX_EXPANDED_TRANSCRIPTS } from "./navigation";
 
 const TABS: InspectorTab[] = ["gene", "transcript", "compare", "feature", "sequence", "table"];
 const MODES: DisplayModeSetting[] = ["auto", "overview", "compact", "labeled", "expanded"];
 const DENSITIES: RowDensity[] = ["compact", "comfortable"];
 const EXPLICIT_VIEW_KEYS = new Set([
   "build", "gene", "locus", "tx", "compareTx", "txOrder", "expanded", "pinned",
+  "allProteins", "collapsedProteins",
   "sources", "classes", "excludeBiotypes", "flags", "density", "canvasKeys", "tab", "mode", "feature",
 ]);
 
@@ -30,7 +31,7 @@ function commaValues(value: string | null): string[] {
   return value ? value.split(",").map((item) => item.trim()).filter(Boolean) : [];
 }
 
-function transcriptOrderValues(value: string | null): string[] {
+function transcriptOrderValues(value: string | null, maximum = 500): string[] {
   const seen = new Set<string>();
   return commaValues(value)
     .filter((id) => id.length <= 80 && /^[A-Za-z0-9_.:-]+$/u.test(id))
@@ -39,7 +40,7 @@ function transcriptOrderValues(value: string | null): string[] {
       seen.add(id);
       return true;
     })
-    .slice(0, 500);
+    .slice(0, maximum);
 }
 
 export function parseViewState(search: string, fallback: BrowserViewState): BrowserViewState {
@@ -60,7 +61,25 @@ export function parseViewState(search: string, fallback: BrowserViewState): Brow
   const modeValue = params.get("mode") as DisplayModeSetting | null;
   const densityValue = params.get("density") as RowDensity | null;
   const canvasKeys = params.get("canvasKeys");
+  const expandedTranscriptIds = params.has("expanded")
+    ? transcriptOrderValues(params.get("expanded"), MAX_EXPANDED_TRANSCRIPTS)
+    : fallback.expandedTranscriptIds;
+  // An old, explicitly encoded view has its own disclosure state. It must not
+  // acquire a saved All preference from the fallback used to read that URL.
+  const legacyExpansion = !params.has("allProteins")
+    && (params.has("expanded") || params.has("mode"));
+  const expandAllProteins = params.has("allProteins")
+    ? params.get("allProteins") === "1"
+    : legacyExpansion && fallback.expandAllProteins !== undefined
+      ? false
+      : fallback.expandAllProteins;
+  const collapsedProteinTranscriptIds = params.has("collapsedProteins")
+    ? transcriptOrderValues(params.get("collapsedProteins"), MAX_COLLAPSED_PROTEIN_TRANSCRIPTS)
+    : legacyExpansion && fallback.collapsedProteinTranscriptIds !== undefined
+      ? []
+      : fallback.collapsedProteinTranscriptIds;
   return {
+    ...(params.get("dataset") || fallback.datasetId ? { datasetId: params.get("dataset") || fallback.datasetId } : {}),
     buildHash: params.get("build") || fallback.buildHash,
     selectedGeneId: params.get("gene") || fallback.selectedGeneId,
     locus,
@@ -71,9 +90,11 @@ export function parseViewState(search: string, fallback: BrowserViewState): Brow
     transcriptOrderIds: params.has("txOrder")
       ? transcriptOrderValues(params.get("txOrder"))
       : fallback.transcriptOrderIds,
-    expandedTranscriptIds: params.has("expanded")
-      ? commaValues(params.get("expanded")).slice(0, MAX_EXPANDED_TRANSCRIPTS)
-      : fallback.expandedTranscriptIds,
+    expandedTranscriptIds,
+    ...(expandAllProteins !== undefined ? { expandAllProteins } : {}),
+    ...(collapsedProteinTranscriptIds !== undefined ? {
+      collapsedProteinTranscriptIds: collapsedProteinTranscriptIds.filter((id) => !expandedTranscriptIds.includes(id)),
+    } : {}),
     pinnedTranscriptIds: params.has("pinned")
       ? commaValues(params.get("pinned"))
       : fallback.pinnedTranscriptIds,
@@ -97,6 +118,7 @@ export function parseViewState(search: string, fallback: BrowserViewState): Brow
 
 export function encodeViewState(state: BrowserViewState): string {
   const params = new URLSearchParams();
+  if (state.datasetId) params.set("dataset", state.datasetId);
   params.set("build", state.buildHash);
   params.set("gene", state.selectedGeneId);
   params.set("locus", formatLocus(state.locus).replaceAll(",", ""));
@@ -104,6 +126,10 @@ export function encodeViewState(state: BrowserViewState): string {
   if (state.comparisonTranscriptId) params.set("compareTx", state.comparisonTranscriptId);
   params.set("txOrder", state.transcriptOrderIds.join(","));
   params.set("expanded", state.expandedTranscriptIds.join(","));
+  if (state.expandAllProteins !== undefined) params.set("allProteins", state.expandAllProteins ? "1" : "0");
+  if (state.collapsedProteinTranscriptIds !== undefined) {
+    params.set("collapsedProteins", state.collapsedProteinTranscriptIds.join(","));
+  }
   params.set("pinned", state.pinnedTranscriptIds.join(","));
   params.set("sources", state.activeSources.join(","));
   params.set("classes", state.activeFeatureClasses.join(","));

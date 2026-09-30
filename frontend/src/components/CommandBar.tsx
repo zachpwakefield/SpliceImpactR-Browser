@@ -1,10 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatBaseCount, formatLocus } from "../lib/coordinates";
 import { selectableSearchResults } from "../lib/searchResolution";
+import { APPLICATION_MARK, APPLICATION_NAME } from "../lib/application";
 import type {
   BuildManifest,
   DisplayMode,
   DisplayModeSetting,
+  InstalledDataset,
   LoadState,
   Locus,
   SearchEntityKind,
@@ -12,6 +14,8 @@ import type {
 } from "../types";
 
 interface CommandBarProps {
+  datasets?: InstalledDataset[];
+  onDatasetChange?: (datasetId: string) => void;
   manifest: BuildManifest;
   manifestState: LoadState;
   query: string;
@@ -48,6 +52,8 @@ function resultDetail(result: SearchResult): string {
 }
 
 export function CommandBar({
+  datasets = [],
+  onDatasetChange,
   manifest,
   manifestState,
   query,
@@ -114,12 +120,24 @@ export function CommandBar({
   return (
     <header className="command-bar">
       <div className="brand-block" aria-label="Application identity">
-        <span className="brand-mark" aria-hidden="true">TB</span>
+        <span className="brand-mark" aria-hidden="true">{APPLICATION_MARK}</span>
         <span className="brand-copy">
-          <strong>Transcript browser</strong>
+          <strong>{APPLICATION_NAME}</strong>
           <small>local annotation instrument</small>
         </span>
       </div>
+
+      {datasets.length > 0 && (
+        <label className="dataset-control" title="Choose an installed, validated annotation. Each tab keeps its own dataset.">
+          <span>Genome annotation</span>
+          <select aria-label="Genome annotation" value={manifest.datasetId ?? "human-gencode-v45"}
+            disabled={manifestState !== "ready"} onChange={(event) => onDatasetChange?.(event.target.value)}>
+            {datasets.map((dataset) => <option value={dataset.datasetId} key={dataset.datasetId}>
+              {dataset.label}{dataset.technicalPreview ? " · preview" : ""}
+            </option>)}
+          </select>
+        </label>
+      )}
 
       <form className="search-form" role="search" onSubmit={submit}>
         <span className="search-glyph" aria-hidden="true">⌕</span>
@@ -167,7 +185,7 @@ export function CommandBar({
           aria-busy={searchState === "loading"}
           autoComplete="off"
           spellCheck={false}
-          placeholder="Search gene, ENST…, ENSP…, ENSE…, or chr12:53,380,176-53,416,446"
+          placeholder={manifest.species === "mouse" ? "Search Sp1, ENSMUST…, protein, exon, or chr19:1-100000" : "Search gene, transcript, protein, exon, or chr12:53380176-53416446"}
         />
         <span className={`search-activity ${searchState}`} aria-hidden="true" />
         <kbd>↵</kbd>
@@ -231,7 +249,7 @@ export function CommandBar({
           <strong>{manifestState === "ready" ? manifest.release : "Verifying local build"}</strong>
           <small>
             {manifestState === "ready"
-              ? `${manifest.assembly} · ${manifest.technicalPreview ? "technical preview" : "verified local build"}`
+              ? `${manifest.species ?? "human"} · ${manifest.assembly} · ${manifest.technicalPreview ? "technical preview" : "verified local build"}`
               : "Release identity pending"}
           </small>
         </span>

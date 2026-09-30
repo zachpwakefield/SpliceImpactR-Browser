@@ -1,0 +1,282 @@
+{
+  "schema": "transcript-browser-dataset-profiles/v1",
+  "default_dataset_id": "human-gencode-v45",
+  "profiles": [
+    {
+      "dataset_id": "human-gencode-v45",
+      "label": "Human · GENCODE v45",
+      "species": "human",
+      "scientific_name": "Homo sapiens",
+      "gencode_release": 45,
+      "ensembl_release": 111,
+      "assembly": "GRCh38.p14",
+      "package_dir": "gencode_v45",
+      "cache_subdir": "gencode_v45",
+      "biomart": {
+        "host": "https://jan2024.archive.ensembl.org",
+        "dataset": "hsapiens_gene_ensembl",
+        "registry_database": "ensembl_mart_111"
+      },
+      "raw_base_url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_45",
+      "raw_inputs": {
+        "gtf": {
+          "file": "gencode.v45.annotation.gtf.gz",
+          "md5": "b6eeb6c9791b7a43a5504a654ff09d9a"
+        },
+        "transcripts": {
+          "file": "gencode.v45.pc_transcripts.fa.gz",
+          "md5": "229d2da3b0dc7e83dd8ae69034be1169"
+        },
+        "translations": {
+          "file": "gencode.v45.pc_translations.fa.gz",
+          "md5": "cf7b19def48b2235abde68df419b4b03"
+        }
+      },
+      "expected": {
+        "gtf_feature_rows": {
+          "gene": 63187,
+          "transcript": 252930,
+          "exon": 1650704,
+          "CDS": 885749,
+          "UTR": 384769,
+          "start_codon": 98063,
+          "stop_codon": 91945,
+          "Selenocysteine": 130
+        },
+        "gtf_total_rows": 3427477,
+        "pc_transcript_fasta_records": 111048,
+        "pc_translation_fasta_records": 111048,
+        "pc_transcript_fasta_records_total": 111048,
+        "pc_translation_fasta_records_total": 111048
+      },
+      "gtf_header_tokens": [
+        "version 45",
+        "Ensembl 111",
+        "human genome (GRCh38)"
+      ],
+      "contigs": {
+        "chr1": 248956422,
+        "chr2": 242193529,
+        "chr3": 198295559,
+        "chr4": 190214555,
+        "chr5": 181538259,
+        "chr6": 170805979,
+        "chr7": 159345973,
+        "chr8": 145138636,
+        "chr9": 138394717,
+        "chr10": 133797422,
+        "chr11": 135086622,
+        "chr12": 133275309,
+        "chr13": 114364328,
+        "chr14": 107043718,
+        "chr15": 101991189,
+        "chr16": 90338345,
+        "chr17": 83257441,
+        "chr18": 80373285,
+        "chr19": 58617616,
+        "chr20": 64444167,
+        "chr21": 46709983,
+        "chr22": 50818468,
+        "chrX": 156040895,
+        "chrY": 57227415,
+        "chrM": 16569
+      },
+      "contig_provenance": {
+        "provider": "UCSC assembly chromosome sizes",
+        "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes",
+        "scope": "reference chromosomes only; lengths are assembly metadata, not GTF extents"
+      },
+      "identifier_prefixes": {
+        "gene": "ENSG",
+        "transcript": "ENST",
+        "protein": "ENSP",
+        "exon": "ENSE"
+      },
+      "preferred_default_gene": "SP1",
+      "ppi_predictions": false
+    },
+    {
+      "dataset_id": "human-gencode-v50",
+      "label": "Human · GENCODE v50",
+      "species": "human",
+      "scientific_name": "Homo sapiens",
+      "gencode_release": 50,
+      "ensembl_release": 116,
+      "assembly": "GRCh38.p14",
+      "package_dir": "human_gencode_v50",
+      "cache_subdir": "human_gencode_v50",
+      "biomart": {
+        "host": "https://jun2026.archive.ensembl.org",
+        "dataset": "hsapiens_gene_ensembl",
+        "registry_database": "ensembl_mart_116"
+      },
+      "raw_base_url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_50",
+      "raw_inputs": {
+        "gtf": {
+          "file": "gencode.v50.annotation.gtf.gz",
+          "md5": "2d273848c6068682fabea72fae4896a9"
+        },
+        "transcripts": {
+          "file": "gencode.v50.pc_transcripts.fa.gz",
+          "md5": "a3476d2eb7baf68201f3a917a4cb973a"
+        },
+        "translations": {
+          "file": "gencode.v50.pc_translations.fa.gz",
+          "md5": "509a89a4c3bb8c594baac50d4d57e589"
+        }
+      },
+      "expected": {
+        "gtf_feature_rows": {
+          "gene": 78733,
+          "transcript": 644292,
+          "exon": 5078384,
+          "CDS": 3210731,
+          "UTR": 1518443,
+          "start_codon": 358311,
+          "stop_codon": 353665,
+          "Selenocysteine": 155
+        },
+        "gtf_total_rows": 11242714,
+        "pc_transcript_fasta_records": 370886,
+        "pc_translation_fasta_records": 370886,
+        "pc_transcript_fasta_records_total": 382428,
+        "pc_translation_fasta_records_total": 382428
+      },
+      "gtf_header_tokens": [
+        "version 50",
+        "Ensembl 116",
+        "human genome (GRCh38)"
+      ],
+      "contigs": {
+        "chr1": 248956422,
+        "chr2": 242193529,
+        "chr3": 198295559,
+        "chr4": 190214555,
+        "chr5": 181538259,
+        "chr6": 170805979,
+        "chr7": 159345973,
+        "chr8": 145138636,
+        "chr9": 138394717,
+        "chr10": 133797422,
+        "chr11": 135086622,
+        "chr12": 133275309,
+        "chr13": 114364328,
+        "chr14": 107043718,
+        "chr15": 101991189,
+        "chr16": 90338345,
+        "chr17": 83257441,
+        "chr18": 80373285,
+        "chr19": 58617616,
+        "chr20": 64444167,
+        "chr21": 46709983,
+        "chr22": 50818468,
+        "chrX": 156040895,
+        "chrY": 57227415,
+        "chrM": 16569
+      },
+      "contig_provenance": {
+        "provider": "UCSC assembly chromosome sizes",
+        "url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chrom.sizes",
+        "scope": "reference chromosomes only; lengths are assembly metadata, not GTF extents"
+      },
+      "identifier_prefixes": {
+        "gene": "ENSG",
+        "transcript": "ENST",
+        "protein": "ENSP",
+        "exon": "ENSE"
+      },
+      "preferred_default_gene": "SP1",
+      "ppi_predictions": false
+    },
+    {
+      "dataset_id": "mouse-gencode-m39",
+      "label": "Mouse · GENCODE M39",
+      "species": "mouse",
+      "scientific_name": "Mus musculus",
+      "gencode_release": "M39",
+      "ensembl_release": 116,
+      "assembly": "GRCm39",
+      "package_dir": "mouse_gencode_m39",
+      "cache_subdir": "mouse_gencode_m39",
+      "biomart": {
+        "host": "https://jun2026.archive.ensembl.org",
+        "dataset": "mmusculus_gene_ensembl",
+        "registry_database": "ensembl_mart_116"
+      },
+      "raw_base_url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M39",
+      "raw_inputs": {
+        "gtf": {
+          "file": "gencode.vM39.annotation.gtf.gz",
+          "md5": "00de1ed79904a24be84704aa9d84adce"
+        },
+        "transcripts": {
+          "file": "gencode.vM39.pc_transcripts.fa.gz",
+          "md5": "5955d3eb3f579122d9df32b13081b919"
+        },
+        "translations": {
+          "file": "gencode.vM39.pc_translations.fa.gz",
+          "md5": "62b2ad70f48c746080b73cb4302bbb9c"
+        }
+      },
+      "expected": {
+        "gtf_feature_rows": {
+          "gene": 78289,
+          "transcript": 481871,
+          "exon": 3762773,
+          "CDS": 2296539,
+          "UTR": 1279449,
+          "start_codon": 263585,
+          "stop_codon": 260765,
+          "Selenocysteine": 64
+        },
+        "gtf_total_rows": 8423335,
+        "pc_transcript_fasta_records": 270163,
+        "pc_translation_fasta_records": 270163,
+        "pc_transcript_fasta_records_total": 270228,
+        "pc_translation_fasta_records_total": 270228
+      },
+      "gtf_header_tokens": [
+        "version M39",
+        "Ensembl 116",
+        "mouse genome (GRCm39)"
+      ],
+      "contigs": {
+        "chr1": 195154279,
+        "chr2": 181755017,
+        "chr3": 159745316,
+        "chr4": 156860686,
+        "chr5": 151758149,
+        "chr6": 149588044,
+        "chr7": 144995196,
+        "chr8": 130127694,
+        "chr9": 124359700,
+        "chr10": 130530862,
+        "chr11": 121973369,
+        "chr12": 120092757,
+        "chr13": 120883175,
+        "chr14": 125139656,
+        "chr15": 104073951,
+        "chr16": 98008968,
+        "chr17": 95294699,
+        "chr18": 90720763,
+        "chr19": 61420004,
+        "chrX": 169476592,
+        "chrY": 91455967,
+        "chrM": 16299
+      },
+      "contig_provenance": {
+        "provider": "UCSC assembly chromosome sizes",
+        "url": "https://hgdownload.soe.ucsc.edu/goldenPath/mm39/bigZips/mm39.chrom.sizes",
+        "scope": "reference chromosomes only; lengths are assembly metadata, not GTF extents"
+      },
+      "identifier_prefixes": {
+        "gene": "ENSMUSG",
+        "transcript": "ENSMUST",
+        "protein": "ENSMUSP",
+        "exon": "ENSMUSE"
+      },
+      "preferred_default_gene": "Sp1",
+      "ppi_predictions": false
+    }
+  ]
+}

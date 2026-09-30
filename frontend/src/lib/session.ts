@@ -1,5 +1,6 @@
 import type { BrowserViewState } from "../types";
 import { encodeViewState, parseViewState, requestedBuildHash } from "./urlState";
+import { MAX_COLLAPSED_PROTEIN_TRANSCRIPTS } from "./navigation";
 import {
   MAX_USER_ANNOTATIONS,
   createUserAnnotation,
@@ -24,6 +25,7 @@ export function encodeSession(
     format: SESSION_FORMAT,
     version: 2,
     buildHash: state.buildHash,
+    ...(state.datasetId ? { datasetId: state.datasetId } : {}),
     urlState: encodeViewState(state),
     annotations,
   }, null, 2);
@@ -78,6 +80,23 @@ export function parsePortableSession(
   const encodedBuild = requestedBuildHash(record.urlState);
   if (encodedBuild !== currentBuildHash) {
     throw new Error("Session build metadata and encoded view disagree.");
+  }
+  const encodedDataset = new URLSearchParams(record.urlState.replace(/^\?/, "")).get("dataset");
+  if ((record.datasetId && record.datasetId !== encodedDataset)
+    || (fallback.datasetId && encodedDataset && encodedDataset !== fallback.datasetId)) {
+    throw new Error("Session belongs to another annotation dataset or its dataset metadata disagrees.");
+  }
+  const encodedParams = new URLSearchParams(record.urlState.replace(/^\?/, ""));
+  if (encodedParams.has("allProteins") && !["0", "1"].includes(encodedParams.get("allProteins") ?? "")) {
+    throw new Error("Session contains an invalid protein-expansion flag.");
+  }
+  if (encodedParams.has("collapsedProteins")) {
+    const collapsedIds = (encodedParams.get("collapsedProteins") ?? "").split(",")
+      .map((id) => id.trim()).filter(Boolean);
+    if (collapsedIds.length > MAX_COLLAPSED_PROTEIN_TRANSCRIPTS
+      || collapsedIds.some((id) => id.length > 80 || !/^[A-Za-z0-9_.:-]+$/u.test(id))) {
+      throw new Error("Session protein-collapse exceptions are invalid or exceed the 500-transcript limit.");
+    }
   }
   return {
     view: {

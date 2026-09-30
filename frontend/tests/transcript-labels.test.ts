@@ -18,11 +18,11 @@ const callbacks = {
   onReorderFocusHandled: () => undefined,
 };
 
-function renderLabels(displayMode: "labeled" | "expanded", expandedTranscriptIds: string[]) {
+function renderLabels(displayMode: "labeled" | "expanded", expandedTranscriptIds: string[], items = translated) {
   return renderToStaticMarkup(createElement(TranscriptLabels, {
-    gene,
-    transcripts: translated,
-    layout: buildRowLayout(translated, expandedTranscriptIds, DEFAULT_VIEW_STATE.activeSources),
+    gene: { ...gene, transcripts: items },
+    transcripts: items,
+    layout: buildRowLayout(items, expandedTranscriptIds, DEFAULT_VIEW_STATE.activeSources),
     displayMode,
     selectedTranscriptId: ids[0],
     comparisonTranscriptId: "",
@@ -49,4 +49,16 @@ test("a translated transcript can open protein features from another track-conte
   const html = renderLabels("labeled", []);
   assert.match(html, new RegExp(`aria-label="Expand ${translated[0].name} protein annotations"`));
   assert.doesNotMatch(html, new RegExp(`aria-label="Expand ${translated[0].name} protein annotations"[^>]*disabled`));
+});
+
+test("idle expanded rows indicate loading rather than successful empty coverage", () => {
+  const html = renderLabels("expanded", ids, translated.map((item) => ({ ...item, features: [], featuresState: "idle" as const })));
+  assert.match(html, /Loading local protein annotations/);
+  assert.doesNotMatch(html, /No features in the selected local sources/);
+});
+
+test("successfully loaded empty rows preserve an explicit no-feature state", () => {
+  const html = renderLabels("expanded", ids, translated.map((item) => ({ ...item, features: [], featuresState: "ready" as const })));
+  assert.match(html, /No features in the selected local sources/);
+  assert.doesNotMatch(html, /Loading local protein annotations/);
 });
