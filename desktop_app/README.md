@@ -92,6 +92,13 @@ stopped; an existing matching server is left alone. This verifies packaging,
 build/frontend identity, loopback readiness, and owned-process shutdown. It
 does not substitute for visual/browser interaction review.
 
+The native self-test still needs access to a logged-in macOS GUI session.
+A restricted or headless command runner may abort in macOS application
+registration before launcher startup. Use a normal terminal in the Mac GUI
+session; do not interpret such an environment failure as a data-build result.
+The generated app and private runtime include the project's MIT license and
+third-party notices, without changing dependency or annotation-data terms.
+
 For a sandboxed installation replay, use a new temporary home rather than
 modifying a real installed app:
 

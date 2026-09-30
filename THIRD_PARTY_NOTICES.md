@@ -5,6 +5,19 @@ describe compatible dependencies; actual R/package versions are recorded per
 preparation. SPDX identifiers are used where available; upstream license files
 remain in installed package metadata.
 
+## Browser source
+
+The repository's original browser code and documentation are licensed under
+the [MIT License](LICENSE), copyright 2026 Zachary Wakefield. This license does
+not replace the licenses of dependencies, downloaded annotations, or other
+third-party materials. Local Mac bundles retain this license and this notice
+file alongside their private runtime.
+
+The browser does not vendor the Ensembl browser implementation. Ensembl's
+[Apache-2.0 software license](https://www.ensembl.org/info/about/legal/code_licence.html)
+and its [data/third-party disclaimer](https://www.ensembl.org/info/about/legal/disclaimer.html)
+are separate from this project's original source license.
+
 ## Scientific data
 
 - The annotation and coding sequences are derived from [GENCODE Human Release 45](https://www.gencodegenes.org/human/release_45.html), identified by GENCODE as GRCh38.p14 / Ensembl 111. GENCODE describes its project data as [open access](https://www.gencodegenes.org/pages/data_access.html). Exact local input names, sizes, digests, row counts, and content hashes are recorded in the immutable build manifest and validation report.

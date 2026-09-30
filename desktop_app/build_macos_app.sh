@@ -45,6 +45,7 @@ xcrun swiftc \
   -o "$CONTENTS/MacOS/TranscriptBrowserLauncher"
 
 cp "$SOURCE_DIR/Info.plist" "$CONTENTS/Info.plist"
+cp "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$CONTENTS/Resources/"
 "$ROOT/.venv/bin/python" -B "$SOURCE_DIR/make_icon.py" "$CONTENTS/Resources/AppIcon.icns"
 "$ROOT/.venv/bin/python" -B "$SOURCE_DIR/package_runtime.py" "$ROOT" "$CONTENTS/Resources/Runtime.zip"
 chmod +x "$CONTENTS/MacOS/TranscriptBrowserLauncher"

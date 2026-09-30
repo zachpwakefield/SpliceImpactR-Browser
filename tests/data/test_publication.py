@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import subprocess
 import tempfile
 import unittest
@@ -12,6 +13,21 @@ from scripts import verify_publication as audit
 
 
 class PublicationAuditTests(unittest.TestCase):
+    def test_browser_license_metadata_matches_owner_selected_mit(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        license_text = (root / "LICENSE").read_text(encoding="utf-8")
+        self.assertTrue(license_text.startswith("MIT License\n"))
+        self.assertIn("Permission is hereby granted, free of charge", license_text)
+        self.assertIn("The above copyright notice and this permission notice", license_text)
+        self.assertIn('THE SOFTWARE IS PROVIDED "AS IS"', license_text)
+        metadata = json.loads((root / "frontend/package.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["license"], "MIT")
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        self.assertIn("[MIT License](LICENSE)", readme)
+        self.assertNotIn("source still needs an explicit license", readme)
+        notices = (root / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+        self.assertIn("The package is licensed `GPL-3`", notices)
+
     def test_ignored_runtime_data_is_allowed_but_staged_data_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

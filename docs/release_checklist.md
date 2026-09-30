@@ -6,7 +6,7 @@ This checklist is intentionally a template for a fresh checkout. It does not cla
 
 - [ ] `scripts/verify_publication.sh` passes.
 - [ ] No `data/cache`, `data/reference`, `data/spliceimpactr-cache`, `data/builds`, `output`, virtual environment, or frontend dependency directory is staged.
-- [ ] The browser source has a repository-owner-selected license.
+- [ ] The repository-owner-selected [MIT license](../LICENSE) and third-party notices accompany the browser source.
 - [ ] SpliceImpactR's Bioconductor GPL-3 attribution and package citation are documented; no vendored package source is staged.
 
 ## Build gate

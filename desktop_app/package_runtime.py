@@ -47,6 +47,11 @@ def build_runtime(project_root: Path, archive: Path, *, site_packages: Path | No
     files["backend/__init__.py"] = root / "backend/__init__.py"
     files.update(_tree(root / "frontend/dist", "frontend/dist"))
     files.update(_tree(site_packages or Path(sysconfig.get_paths()["purelib"]), "site-packages"))
+    for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
+        path = root / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"Missing regular project license/notice file: {name}")
+        files[name] = path
     for name in ("manifest.json", "validation_report.json", "build_metrics.json", "determinism_receipt.json"):
         path = package.root / name
         if path.is_symlink():

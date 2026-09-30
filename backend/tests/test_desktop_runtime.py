@@ -24,6 +24,8 @@ class DesktopRuntimeTests(unittest.TestCase):
         destination.parent.mkdir(parents=True)
         package.rename(destination)
         for name, text in {
+            "LICENSE": "MIT License\nSynthetic project-license fixture\n",
+            "THIRD_PARTY_NOTICES.md": "Synthetic dependency-notice fixture\n",
             "backend/__init__.py": "",
             "backend/app/cli.py": "# packaged fixture entry point\n",
             "frontend/dist/index.html": "<html><body>local fixture</body></html>\n",
@@ -82,6 +84,10 @@ class DesktopRuntimeTests(unittest.TestCase):
                 names = source.namelist()
                 self.assertIn("backend/app/cli.py", names)
                 self.assertIn("frontend/dist/index.html", names)
+                self.assertIn("LICENSE", names)
+                self.assertIn("THIRD_PARTY_NOTICES.md", names)
+                self.assertEqual(source.read("LICENSE"), (root / "LICENSE").read_bytes())
+                self.assertEqual(source.read("THIRD_PARTY_NOTICES.md"), (root / "THIRD_PARTY_NOTICES.md").read_bytes())
                 self.assertIn("runtime-manifest.json", names)
                 self.assertFalse(any(name.endswith(".sqlite") or "__pycache__" in name for name in names))
             self.assertEqual(original, file_sha256(root / PACKAGE / "annotation.sqlite"))

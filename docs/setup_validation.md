@@ -179,6 +179,25 @@ audit, full-database startup, and conflict-copy checks. Both Python 3.9 and
 3.14 independently passed the 35 backend tests with warnings treated as errors.
 The scientific annotation build identity remained unchanged.
 
+## Owner-selected license and final local check
+
+The repository owner selected MIT for the original browser source. The root
+license, README, and frontend package metadata now agree; SpliceImpactR's GPL-3
+license and annotation-data terms remain separate. License/notice files are
+also included in the locally generated Mac bundle and its private runtime.
+
+After these changes, the automated core gate passed 45 data/builder, 35
+backend/packaging/API/PDF, and 116 frontend tests (196 total, no skips). The
+full-database startup and deterministic-build identity remained unchanged.
+The isolated native installer, resource/signature checks, and self-test passed;
+the self-test started and stopped only its own server.
+
+A first attempt in a restricted command runner aborted inside macOS application
+registration, before launcher startup. The same signed bundle passed with
+access to the macOS GUI services. This environment restriction is separate
+from scientific-package or launcher validation; native self-tests need a
+logged-in GUI session even when they display no window.
+
 ## Remaining review boundaries
 
 - Actual desktop Safari, a working WebKit engine, Intel native installation,
@@ -187,7 +206,6 @@ The scientific annotation build identity remained unchanged.
   still need human reviewers.
 - The optional reference-enabled build and the full optional exon audit were
   not exercised here; both-strand exon/projection fixtures were tested.
-- Repository-owner license selection remains separate from successful setup.
 
 Use [testing.md](testing.md) to reproduce source, generated-data, live API,
 deterministic-build, and release checks. Keep new evidence separate from the

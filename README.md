@@ -111,6 +111,12 @@ database, and starts the server. If pnpm is absent, it uses a pinned pnpm via
 No `samtools` or whole-genome FASTA is needed. First preparation can be lengthy;
 keep the cache and rerun the same command after an interrupted download/query.
 Do not confuse successful source-only tests with a successful full setup.
+
+Alternatively, use **Code → Download ZIP** on the GitHub repository page,
+extract it, open a terminal in the extracted folder, and run
+`./scripts/setup_local.sh`. Git is not required for this route. Keep that folder
+for later runs; the source ZIP does not include prepared data or dependencies.
+
 The validated unfiltered SQLite database is about 3.33 GB, in addition to
 dependencies and caches. Rebuilding temporarily needs room for both the old
 and new database.
@@ -430,6 +436,8 @@ data/builds/                 generated local builds only; ignored by Git
 
 ## Licensing and attribution
 
-SpliceImpactR is installed from Bioconductor during data preparation and remains under its upstream GPL-3 license, authorship, citation, and source notices. The browser source still needs an explicit license selected by the repository owner before public redistribution; until then, GitHub download does not grant a new license to the browser code. Third-party notices are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+The browser's original source and documentation are licensed under the [MIT License](LICENSE), selected by the repository owner. You may use, modify, and redistribute that code, including commercially, while preserving the copyright and license notice.
+
+SpliceImpactR is installed from Bioconductor during data preparation and remains under its upstream GPL-3 license, authorship, citation, and source notices. MIT does not replace any third-party license. Third-party notices are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 Reference and annotation files remain subject to their respective GENCODE, Ensembl, BioMart, ELM, and database terms. Review those terms before redistributing generated data. For the critical review and release boundary, see [`docs/release_checklist.md`](docs/release_checklist.md).
