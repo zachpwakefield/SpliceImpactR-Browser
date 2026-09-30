@@ -48,6 +48,41 @@ Use **Fit gene** or **Fit transcript** for an explicit jump. Drag the genomic Ca
 
 Broad loci use precomputed density and packed genes. Below the detail thresholds, individual transcript models appear. Selected and pinned entities remain available when automatic level-of-detail would otherwise suppress transcript rows.
 
+## Highlight genomic events
+
+Search for a gene, then open **Event highlights** and paste one interval or a
+list such as `chrX:1-3,5-9,22-50`. Coordinates are **1-based inclusive**; `1-1`
+marks one base. The chromosome carries forward across comma-separated ranges.
+Use a new line for another chromosome. A single complete interval per line can
+use thousands separators, for example `chrX:77,910,739-77,910,741`; omit those
+separators in comma-separated lists. Bare ranges use the selected gene's
+chromosome. All positions must fit the active genome assembly.
+
+**Add highlights** preserves the selected gene and viewport. Colored, dashed
+bands mark the genomic intervals across transcript rows; exon intersections
+are outlined. Expand protein tracks to see the corresponding marks on each
+independent amino-acid axis. The panel lists spliced transcript base ranges and
+protein residues for the selected and comparison transcripts. **Fit highlights**
+fits events on the selected gene's chromosome; click an individual coordinate
+chip to navigate to it without changing gene context. Remove one event or use
+**Clear highlights**. Up to 100 intervals are supported, each at most 25 Mb;
+overlapping events remain separate, while identical duplicates are ignored.
+
+These marks are user context, not source annotations or splice/variant-effect
+predictions. Only exon-overlapping bases receive spliced transcript positions.
+Only coding bases with a complete, exact validated translation map receive
+protein positions. Intronic, UTR, noncoding, loading and unverified-map states
+remain explicit. A single coding base marks its touched residue; **partial codon
+overlap** warns when the interval covers only part of a codon. Terminal stop
+triplets are not protein residues. Protein marks do not imply that a domain or
+interaction was gained or lost.
+
+Events survive gene navigation, pan/zoom, Back/Forward, saved last views and
+portable sessions within the same dataset/build. Switching species or releases
+does not carry them into the new annotation. They are not written to the
+scientific database or included in scientific PDF reports. Shared view URLs
+and session files include these user-supplied coordinates.
+
 ## Inspect transcripts and proteins
 
 The **View → Default protein tracks** setting offers **All translated transcripts**, **Top translated transcript** (the initial default), and **None**. Choosing a setting applies it to the current gene and future fresh gene searches/choices. Top means the first translated transcript in annotation order, not a biological ranking. An explicit URL, imported session, Back/Forward state, or restored last view remains authoritative and keeps its requested content mode and expansion state.
@@ -151,7 +186,7 @@ The last case preserves context and offers **Return to transcript/gene**. Packag
 
 ## Preserve and export a view
 
-The URL stores the build hash, locus, selected gene/transcript/comparison/feature, custom transcript order, expanded and pinned rows, source filters, typed prediction classes, excluded transcript biotypes, required transcript flags, row density, Canvas-keyboard preference, display mode, and inspector tab. Search/coordinate/fit actions create history entries; live pan, zoom, filters, ordering, view settings, and disclosure changes update the current entry. Browser Back/Forward restores the complete research state.
+The URL stores the build hash, locus, selected gene/transcript/comparison/feature, genomic event highlights, custom transcript order, expanded and pinned rows, source filters, typed prediction classes, excluded transcript biotypes, required transcript flags, row density, Canvas-keyboard preference, display mode, and inspector tab. Search/coordinate/fit/highlight actions create history entries; live pan, zoom, filters, ordering, view settings, and disclosure changes update the current entry. Browser Back/Forward restores the complete research state.
 
 The schema-1 local workspace uses the key `transcript-browser:workspace:v1`, is capped at 512 KiB, and is accepted only when its build hash matches the verified manifest. It persists a ready, validated last view after a 400 ms debounce; scrolling alone is not stored continuously. On startup, automatic restoration runs only when **Restore last view** is enabled and the page has no explicit view parameters. Any explicit deep link wins. Corrupt, unsupported, oversized, or build-mismatched workspace data is safely ignored rather than partially trusted.
 

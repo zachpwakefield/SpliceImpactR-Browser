@@ -77,6 +77,16 @@ export interface TranscriptExon {
   phase?: 0 | 1 | 2;
   aaStart?: number;
   aaEnd?: number;
+  transcriptStart0?: number;
+  transcriptEnd0?: number;
+}
+
+export interface CodingSegment {
+  exonRank: number;
+  start0: number;
+  end0: number;
+  codingStart0: number;
+  codingEnd0: number;
 }
 
 export interface ProteinFeature {
@@ -124,6 +134,9 @@ export interface Transcript {
   featuresState?: LoadState;
   detailState?: LoadState;
   sequences?: Partial<Record<"transcript_full" | "cds" | "protein", { available: boolean; length: number }>>;
+  translationMapping?: { status: string; reason: string; cdsStart0?: number; cdsEnd0?: number };
+  /** Translation-relative offsets supplied only by the validated exact map. */
+  codingSegments?: CodingSegment[];
 }
 
 export interface Gene {
@@ -163,6 +176,8 @@ export interface BrowserViewState {
   inspectorTab: InspectorTab;
   selectedFeatureId?: string;
   displayMode: DisplayModeSetting;
+  /** User-supplied, dataset/build-scoped genomic events; not source evidence. */
+  genomicHighlights?: Locus[];
 }
 
 export interface BuildManifest {
@@ -175,6 +190,7 @@ export interface BuildManifest {
   gencodeRelease?: string;
   ensemblRelease?: string | number;
   assembly: string;
+  chromosomeLengths?: Record<string, number>;
   buildHash: string;
   dataSource: "api" | "fixture";
   referenceAvailable: boolean;

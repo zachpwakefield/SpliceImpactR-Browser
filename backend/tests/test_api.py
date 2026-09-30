@@ -198,6 +198,8 @@ class ApiTests(unittest.TestCase):
             self.assertTrue(manifest.json()["technicalPreview"])
             self.assertFalse(manifest.json()["reference"]["available"])
             self.assertTrue(manifest.json()["capabilities"]["density"])
+            self.assertTrue(manifest.json()["capabilities"]["genomicEventHighlights"])
+            self.assertEqual(manifest.json()["chromosomeLengths"]["chrX"], 156_040_895)
             self.assertEqual(
                 manifest.json()["densityTileLevels"],
                 [16_384, 65_536, 262_144, 1_048_576],
@@ -262,6 +264,32 @@ class ApiTests(unittest.TestCase):
                 params={"chr": "chr12", "start0": 0, "end0": 25_000_001},
             )
             self.assertEqual(too_wide.status_code, 413)
+
+    def test_transcript_event_projection_offsets_preserve_exact_and_null_partial_maps(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = make_package(root)
+            connection = sqlite3.connect(package / "annotation.sqlite")
+            for column in ("transcript_start0", "transcript_end0"):
+                connection.execute(f"ALTER TABLE exon ADD COLUMN {column} INTEGER")
+            for column in ("coding_start0", "coding_end0"):
+                connection.execute(f"ALTER TABLE cds_segment ADD COLUMN {column} INTEGER")
+            connection.execute("UPDATE exon SET transcript_start0=0,transcript_end0=1000")
+            connection.execute("UPDATE cds_segment SET coding_start0=0,coding_end0=600 WHERE transcript_id='ENST00000327443'")
+            connection.execute("UPDATE translation_mapping SET status='partial' WHERE transcript_id='ENST00000548560'")
+            connection.commit()
+            connection.close()
+            client = TestClient(create_app(project_root=root, package_root=package, dev_fixture=True), base_url="http://127.0.0.1")
+            exact = client.get("/api/v1/transcripts/ENST00000327443").json()
+            self.assertEqual(exact["exons"][0]["transcriptStart0"], 0)
+            self.assertEqual(exact["exons"][0]["transcriptEnd0"], 1000)
+            self.assertEqual(exact["cdsSegments"][0]["codingStart0"], 0)
+            self.assertEqual(exact["cdsSegments"][0]["codingEnd0"], 600)
+            self.assertEqual(exact["translationMapping"]["status"], "exact")
+            partial = client.get("/api/v1/transcripts/ENST00000548560").json()
+            self.assertIsNone(partial["cdsSegments"][0]["codingStart0"])
+            self.assertIsNone(partial["cdsSegments"][0]["codingEnd0"])
+            self.assertEqual(partial["translationMapping"]["status"], "partial")
 
     def test_region_lod_density_pagination_overrides_and_boundaries(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

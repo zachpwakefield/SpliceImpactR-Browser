@@ -14,6 +14,7 @@ import {
   type TranscriptFlag,
 } from "../types";
 import { MAX_LOCUS_SPAN_BP } from "./coordinates";
+import { validateHighlights } from "./eventHighlights";
 import {
   MAX_COLLAPSED_PROTEIN_TRANSCRIPTS,
   MAX_EXPANDED_TRANSCRIPTS,
@@ -263,6 +264,11 @@ function normalizedView(value: unknown, currentBuildHash: string): BrowserViewSt
   const activeFeatureClasses = enumArray(value.activeFeatureClasses, FEATURE_CLASSES);
   const activeTranscriptFlags = enumArray(value.activeTranscriptFlags, TRANSCRIPT_FLAGS);
   const excludedTranscriptBiotypes = safeIdentifierArray(value.excludedTranscriptBiotypes, MAX_VIEW_BIOTYPES);
+  let genomicHighlights: BrowserViewState["genomicHighlights"];
+  if (value.genomicHighlights !== undefined) {
+    try { genomicHighlights = validateHighlights(value.genomicHighlights); }
+    catch { return undefined; }
+  }
   if (
     !transcriptOrderIds
     || !expandedTranscriptIds
@@ -307,6 +313,7 @@ function normalizedView(value: unknown, currentBuildHash: string): BrowserViewSt
     canvasKeyboardShortcuts: value.canvasKeyboardShortcuts,
     inspectorTab: value.inspectorTab,
     displayMode: value.displayMode,
+    ...(genomicHighlights !== undefined ? { genomicHighlights } : {}),
   };
   if (value.selectedFeatureId) cleaned.selectedFeatureId = value.selectedFeatureId;
   return cleaned as unknown as BrowserViewState;

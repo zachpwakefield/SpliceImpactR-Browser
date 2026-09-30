@@ -437,6 +437,36 @@ projection was independently reconstructed and checked from the raw GTF.
 Biological sign-off, unfamiliar-user tasks, actual Safari/Intel installation
 and physical Dock/Finder interaction remain separate human/platform gates.
 
+## September 30 genomic event highlight validation
+
+Application **1.3.0** adds manual genomic interval lists with transcript and
+exact-map protein projection. The unchanged human v45 and mouse M34 packages
+were used. The full source gate passed **83 data/tooling, 58 backend/API/native
+and 181 frontend tests (322 total, no skips)**, plus the released-package R
+contracts, TypeScript, production build, offline bundle and publication audits.
+An independent per-base oracle checked 30,012 interval cases covering both
+strands and phase-one/two split codons, including partial-codon semantics and
+terminal-stop exclusion. No annotation rebuild was required.
+
+Real Chrome and Firefox workflows passed for human SP1/TPM1/FGFR3/TP53 and
+mouse Sp1/Tpm1/Fgfr3/Brca1. Mouse Chrome used DPR 2. Actual protein projections
+were checked against coding bases returned by the API, not the frontend helper.
+The workflows covered comparison isoforms, intron/UTR states, adding without
+moving gene/viewport, fit/pan/zoom, invalid-input atomicity, Back/Forward,
+session export/import, reload, other-chromosome context, dataset isolation and
+wide/narrow layouts. All four runs had zero browser errors and external runtime
+requests. These are coordinate-highlight checks, not variant-effect predictions.
+
+A temporary-home Mac installation and native self-test passed with human v45
+as default and both data packages privately cloned. The regular local launcher
+was then updated, signed/verified and reopened with that same human default.
+Its self-test passed readiness and owned-process shutdown on the normal port.
+The existing Dock target/order and all unrelated entries remained unchanged;
+older runtimes and a backup of the previous app were retained. User workspaces
+and annotation databases were not deleted or rewritten.
+The installed human-default runtime also passed the full Chrome event workflow
+at DPR 2, with zero browser errors or external runtime requests.
+
 ## Remaining review boundaries
 
 - Actual desktop Safari, a working WebKit engine, Intel native installation,

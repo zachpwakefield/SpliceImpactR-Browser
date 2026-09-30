@@ -12,6 +12,7 @@ import { genomicToPixel, locusSpan, panLocus, pixelToGenomic, zoomLocus } from "
 import type { BrowserRowLayout } from "../lib/layout";
 import { canvasKeyboardCommand } from "../lib/navigation";
 import { boundedCanvasBitmapSize, type VariableRowWindow } from "../lib/windowing";
+import { highlightColor, highlightKey, projectGenomicEvent } from "../lib/eventHighlights";
 import {
   SOURCE_META,
   type DisplayMode,
@@ -33,6 +34,7 @@ interface HitRegion {
   feature?: ProteinFeature;
   geneId?: string;
   phase?: { exonRank: number; phase: 1 | 2; aaStart?: number };
+  event?: boolean;
 }
 
 interface GenomeCanvasProps {
@@ -49,9 +51,12 @@ interface GenomeCanvasProps {
   onSelectTranscript: (transcriptId: string) => void;
   onSelectFeature: (feature: ProteinFeature) => void;
   region?: RegionData;
+  highlights?: readonly Locus[];
   onSelectGene?: (geneId: string) => void;
   onLocusChange: (locus: Locus, commit?: boolean) => void;
 }
+
+const EMPTY_HIGHLIGHTS: Locus[] = [];
 
 function useElementWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -137,6 +142,7 @@ export function GenomeCanvas({
   onSelectTranscript,
   onSelectFeature,
   region,
+  highlights = EMPTY_HIGHLIGHTS,
   onSelectGene,
   onLocusChange,
 }: GenomeCanvasProps) {
@@ -151,6 +157,13 @@ export function GenomeCanvas({
     () => new Map(transcripts.map((transcript) => [transcript.id, transcript])),
     [transcripts],
   );
+  const eventProjections = useMemo(() => new Map(layout.rows.slice(renderWindow.firstIndex, renderWindow.lastIndexExclusive)
+    .filter((row) => row.expanded).flatMap((row) => {
+      const transcript = transcriptById.get(row.transcriptId);
+      return transcript ? [[transcript.id, highlights.map((interval) => projectGenomicEvent(interval, gene.chrom, transcript))] as const] : [];
+    })), [gene.chrom, highlights, layout, renderWindow.firstIndex, renderWindow.lastIndexExclusive, transcriptById]);
+  const proteinHighlightCount = [...eventProjections.values()].reduce((count, projections) => count
+    + projections.reduce((count, projection) => count + projection.protein.length, 0), 0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -226,8 +239,24 @@ export function GenomeCanvas({
       });
     });
 
+    highlights.forEach((interval, index) => {
+      if (interval.chrom !== locus.chrom) return;
+      const rect = visibleRect(interval.start0, interval.end0, locus, width);
+      if (!rect) return;
+      context.fillStyle = highlightColor(interval);
+      context.fillRect(rect.x, 19, rect.width, 5);
+      if (rect.width > 24) {
+        context.font = "bold 9px system-ui, -apple-system, sans-serif";
+        context.textAlign = "left";
+        context.fillText(`H${index + 1}`, rect.x + 2, 27);
+        context.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+      }
+      hits.push({ x: rect.x - 2, y: 17, width: Math.max(6, rect.width + 4), height: 12,
+        transcriptId: "", event: true, label: `User event H${index + 1} · ${highlightKey(interval)}` });
+    });
+
     // Selected gene summary in the ruler band.
-    const geneRect = visibleRect(gene.start0, gene.end0, locus, width);
+    const geneRect = gene.chrom === locus.chrom ? visibleRect(gene.start0, gene.end0, locus, width) : null;
     context.strokeStyle = "#86928a";
     context.lineWidth = 1;
     context.beginPath();
@@ -268,8 +297,30 @@ export function GenomeCanvas({
         label: transcript.name,
       });
 
+      // User events are a separate, translucent genomic layer. Never carry
+      // genomic x-coordinates into the independent protein inset below.
+      const genomicBottom = row.expanded ? row.proteinTop - 8 : row.y + row.height - 1;
+      highlights.forEach((interval, index) => {
+        if (interval.chrom !== locus.chrom || gene.chrom !== locus.chrom) return;
+        const rect = visibleRect(interval.start0, interval.end0, locus, width);
+        if (!rect) return;
+        context.fillStyle = highlightColor(interval);
+        context.globalAlpha = 0.12;
+        context.fillRect(rect.x, row.y + 1, rect.width, genomicBottom - row.y - 1);
+        context.globalAlpha = 0.6;
+        context.strokeStyle = highlightColor(interval);
+        context.lineWidth = 1;
+        context.setLineDash([3, 3]);
+        context.strokeRect(rect.x, row.y + 1, rect.width, genomicBottom - row.y - 1);
+        context.setLineDash([]);
+        context.globalAlpha = 1;
+        hits.push({ x: rect.x - 2, y: row.y + 1, width: Math.max(6, rect.width + 4), height: genomicBottom - row.y - 1,
+          transcriptId: transcript.id, event: true,
+          label: `User event H${index + 1} · ${highlightKey(interval)} · ${transcript.name}` });
+      });
+
       const modelY = row.modelY;
-      const visibleExons = transcript.exons
+      const visibleExons = (gene.chrom === locus.chrom ? transcript.exons : [])
         .map((item) => ({ item, rect: visibleRect(item.start0, item.end0, locus, width) }))
         .filter((entry) => entry.rect !== null);
       if (visibleExons.length) {
@@ -291,7 +342,7 @@ export function GenomeCanvas({
           context.fill();
         }
       } else {
-        const summary = visibleRect(transcript.start0, transcript.end0, locus, width);
+        const summary = gene.chrom === locus.chrom ? visibleRect(transcript.start0, transcript.end0, locus, width) : null;
         if (summary) {
           context.fillStyle = transcript.detailState === "error" ? "#a77a62" : "#87968e";
           context.fillRect(summary.x, modelY - 3, summary.width, 6);
@@ -303,7 +354,7 @@ export function GenomeCanvas({
       }
 
       const selectedFeature = transcript.features.find((feature) => feature.recordId === activeFeatureId);
-      if (displayMode !== "compact") transcript.exons.forEach((item) => {
+      if (displayMode !== "compact" && gene.chrom === locus.chrom) transcript.exons.forEach((item) => {
         const outer = visibleRect(item.start0, item.end0, locus, width);
         if (!outer) return;
         context.fillStyle = "#f7f8f4";
@@ -319,7 +370,17 @@ export function GenomeCanvas({
           }
         }
       });
-      if (selectedFeature) {
+      highlights.forEach((interval) => {
+        if (interval.chrom !== locus.chrom || gene.chrom !== locus.chrom) return;
+        transcript.exons.forEach((exon) => {
+          const rect = visibleRect(Math.max(exon.start0, interval.start0), Math.min(exon.end0, interval.end0), locus, width);
+          if (!rect) return;
+          context.strokeStyle = highlightColor(interval);
+          context.lineWidth = 2;
+          context.strokeRect(rect.x, modelY - 10, rect.width, 20);
+        });
+      });
+      if (selectedFeature && gene.chrom === locus.chrom) {
         selectedFeature.segments.forEach((segment) => {
           const rect = visibleRect(segment.start0, segment.end0, locus, width);
           if (!rect) return;
@@ -362,7 +423,7 @@ export function GenomeCanvas({
             .filter((feature) => feature.source === source)
             .forEach((feature) => {
               feature.segments.forEach((segment) => {
-                const rect = visibleRect(segment.start0, segment.end0, locus, width);
+                const rect = gene.chrom === locus.chrom ? visibleRect(segment.start0, segment.end0, locus, width) : null;
                 if (!rect) return;
                 const selected = feature.recordId === activeFeatureId;
                 drawFeatureBlock(context, rect.x, laneY - 4, rect.width, 8, feature, selected);
@@ -436,6 +497,7 @@ export function GenomeCanvas({
       });
       const visibleAas = transcript.exons.filter(
         (item) =>
+          gene.chrom === locus.chrom &&
           item.aaStart !== undefined &&
           item.aaEnd !== undefined &&
           item.end0 > locus.start0 &&
@@ -449,6 +511,25 @@ export function GenomeCanvas({
         context.fillStyle = "#d28a4b";
         context.fillRect(x, proteinTop + 18, Math.max(2, endX - x), 3);
       }
+      eventProjections.get(transcript.id)?.forEach((projection, index) => {
+        const interval = highlights[index];
+        projection.protein.forEach((range) => {
+          const x = proteinX(range.start1), endX = proteinX(range.end1 + 1);
+          const visualWidth = Math.max(2, endX - x), y = proteinTop + 22, height = row.proteinHeight - 28;
+          context.fillStyle = highlightColor(interval);
+          context.globalAlpha = 0.2;
+          context.fillRect(x, y, visualWidth, height);
+          context.globalAlpha = 1;
+          context.strokeStyle = highlightColor(interval);
+          context.lineWidth = 1.5;
+          context.setLineDash([3, 2]);
+          context.strokeRect(x, y, visualWidth, height);
+          context.setLineDash([]);
+          hits.push({ x: x - 2, y, width: Math.max(6, visualWidth + 4), height,
+            transcriptId: transcript.id, event: true,
+            label: `User event H${index + 1} · ${highlightKey(interval)} · aa ${range.start1}–${range.end1}${projection.partialCodons ? " · partial codon overlap" : ""}` });
+        });
+      });
       row.laneSources.forEach((source, laneIndex) => {
         const laneY = proteinTop + 28 + laneIndex * 7;
         context.fillStyle = SOURCE_META[source].color;
@@ -475,7 +556,7 @@ export function GenomeCanvas({
       });
     });
     hitRegions.current = hits;
-  }, [activeFeatureId, activeSources, displayMode, gene, layout, locus, region, renderWindow, selectedTranscriptId, transcriptById, width]);
+  }, [activeFeatureId, activeSources, displayMode, eventProjections, gene, highlights, layout, locus, region, renderWindow, selectedTranscriptId, transcriptById, width]);
 
   function localPoint(event: { clientX: number; clientY: number }) {
     const bounds = canvasRef.current?.getBoundingClientRect();
@@ -522,8 +603,8 @@ export function GenomeCanvas({
       return;
     }
     const hit = hitAt(point.x, point.y);
-    setHovered(hit?.feature || hit?.phase ? hit : null);
-    event.currentTarget.style.cursor = hit?.feature || hit?.phase ? "pointer" : "grab";
+    setHovered(hit?.feature || hit?.phase || hit?.event ? hit : null);
+    event.currentTarget.style.cursor = hit?.feature || hit?.phase || hit?.event || hit?.geneId ? "pointer" : "grab";
   }
 
   function pointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
@@ -546,7 +627,11 @@ export function GenomeCanvas({
       else if (hit?.feature) onSelectFeature(hit.feature);
       else if (hit?.phase) setHovered(hit);
       else if (hit?.geneId) onSelectGene?.(hit.geneId);
-      else if (hit) onSelectTranscript(hit.transcriptId);
+      else if (hit?.event) {
+        setHovered(hit);
+        if (hit.transcriptId) onSelectTranscript(hit.transcriptId);
+      }
+      else if (hit?.transcriptId) onSelectTranscript(hit.transcriptId);
     }
   }
 
@@ -584,6 +669,8 @@ export function GenomeCanvas({
     >
       <canvas
         ref={canvasRef}
+        data-genomic-highlight-count={highlights.filter((interval) => interval.chrom === locus.chrom && interval.end0 > locus.start0 && interval.start0 < locus.end0).length}
+        data-protein-highlight-count={proteinHighlightCount}
         style={{ top: renderWindow.start0 }}
         tabIndex={0}
         aria-label={`${gene.symbol} genomic transcript models. Drag to pan; Control or Command plus wheel to zoom; ${keyboardShortcutsEnabled ? "arrow keys pan and plus or minus zoom" : "Canvas keyboard shortcuts are disabled in View settings"}.`}
@@ -619,6 +706,10 @@ export function GenomeCanvas({
             <strong>Split-codon boundary</strong>
             <p>Exon {hovered.phase.exonRank} · GENCODE CDS phase {hovered.phase.phase}</p>
             <small>{hovered.phase.aaStart === undefined ? "Protein position not mapped" : `Boundary at aa ${hovered.phase.aaStart}`} · phase-aware exon contribution</small>
+          </> : hovered.event ? <>
+            <strong>User genomic event</strong>
+            <p>{hovered.label}</p>
+            <small>Manual position highlight · residues touched, not predicted protein changes</small>
           </> : null}
         </div>
       )}
@@ -645,6 +736,7 @@ export function GenomeCanvas({
       )}
       <div id="canvas-accessible-summary" className="sr-only">
         <p>{gene.symbol} has {gene.transcripts.length} transcripts in the selected local annotation. The canvas is mirrored by transcript controls and the inspector feature table.</p>
+        {!!highlights.length && <p>{highlights.length} user genomic event highlights. Open Event highlights for the selected and comparison transcript coordinate projections.</p>}
         {selectedTranscript && (
           <ul>
             {selectedTranscript.exons

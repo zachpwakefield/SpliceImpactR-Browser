@@ -60,6 +60,46 @@ canvas:focus-visible {
 
 .app-shell { display: flex; flex-direction: column; width: 100%; height: 100dvh; min-height: 0; overflow: hidden; }
 
+/* Manual event context is visually separate from source annotation tracks. */
+.event-highlights { flex: 0 0 auto; border-bottom: 1px solid var(--line); background: var(--paper); }
+.event-highlights > summary { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 7px 18px; cursor: pointer; font-size: 12px; font-weight: 650; list-style: none; }
+.event-highlights > summary::-webkit-details-marker { display: none; }
+.event-highlights > summary::before { content: "+"; color: var(--muted); font-family: var(--mono); font-size: 14px; }
+.event-highlights[open] > summary::before { content: "−"; }
+.event-highlights > summary small { margin-left: auto; color: var(--muted); font-size: 10px; font-weight: 400; }
+.event-mark { color: #be662d; font-size: 17px; }
+.event-count { padding: 2px 6px; border-radius: 4px; color: #795332; background: #f3eadf; font: 10px var(--mono); }
+.event-editor { display: grid; grid-template-columns: minmax(270px, 360px) minmax(0, 1fr); gap: 22px; padding: 3px 18px 14px; max-height: 37vh; overflow: auto; border-top: 1px solid var(--soft-line); }
+.event-editor form { padding-top: 10px; }
+.event-editor label { display: block; margin-bottom: 6px; color: var(--ink); font-size: 11px; font-weight: 650; }
+.event-editor textarea { width: 100%; min-height: 64px; resize: vertical; padding: 9px; border: 1px solid #c9d2c9; border-radius: 7px; background: #fff; color: var(--ink); font: 11px var(--mono); line-height: 1.6; }
+.event-editor textarea[aria-invalid="true"] { border-color: #b15f49; }
+.event-editor form > p { margin: 6px 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.event-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.event-actions button { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: #fff; font-size: 10px; cursor: pointer; }
+.event-actions button[type="submit"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.event-actions button:disabled { opacity: .5; cursor: default; }
+.event-editor form > .event-error { color: #8a4433; }
+.event-editor form > .event-message { color: var(--accent-dark); }
+.event-content { min-width: 0; padding-top: 5px; }
+.event-disclaimer { color: var(--muted); font-size: 10px; line-height: 1.5; margin: 5px 0 9px; }
+.event-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 0 0 10px; list-style: none; }
+.event-list li { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; border: 1px solid; border-radius: 6px; background: #fff; padding: 2px 4px; }
+.event-list button { border: 0; border-radius: 3px; color: var(--muted); background: transparent; cursor: pointer; padding: 3px; font-size: 12px; }
+.event-list .event-coordinate { color: var(--ink); font: 10px var(--mono); overflow-wrap: anywhere; text-align: left; }
+.event-coordinate span { font-weight: 700; margin-right: 3px; }
+.event-list small { color: var(--muted); font-size: 9px; }
+.event-projection { margin: 8px 0 10px; overflow-x: auto; }
+.event-projection h3 { font-size: 11px; font-weight: 650; margin: 0 0 5px; }
+.event-projection table { width: 100%; border-collapse: collapse; font-size: 10px; line-height: 1.4; }
+.event-projection th, .event-projection td { padding: 5px 8px; border-bottom: 1px solid var(--soft-line); text-align: left; vertical-align: top; }
+.event-projection thead th { color: var(--muted); background: var(--panel); font-size: 9px; font-weight: 550; }
+.event-projection tbody td:nth-child(2) { font-family: var(--mono); }
+@media (max-width: 800px) {
+  .event-editor { grid-template-columns: minmax(0, 1fr); gap: 5px; max-height: 42vh; }
+  .event-highlights > summary small { display: none; }
+}
+
 .command-bar {
   position: sticky;
   top: 0;

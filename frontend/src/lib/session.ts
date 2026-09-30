@@ -1,6 +1,7 @@
 import type { BrowserViewState } from "../types";
 import { encodeViewState, parseViewState, requestedBuildHash } from "./urlState";
 import { MAX_COLLAPSED_PROTEIN_TRANSCRIPTS } from "./navigation";
+import { parseHighlightInput } from "./eventHighlights";
 import {
   MAX_USER_ANNOTATIONS,
   createUserAnnotation,
@@ -87,6 +88,7 @@ export function parsePortableSession(
     throw new Error("Session belongs to another annotation dataset or its dataset metadata disagrees.");
   }
   const encodedParams = new URLSearchParams(record.urlState.replace(/^\?/, ""));
+  if (encodedParams.get("hi")) parseHighlightInput(encodedParams.get("hi")!);
   if (encodedParams.has("allProteins") && !["0", "1"].includes(encodedParams.get("allProteins") ?? "")) {
     throw new Error("Session contains an invalid protein-expansion flag.");
   }

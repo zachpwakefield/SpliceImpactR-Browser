@@ -341,3 +341,37 @@ context, **not** validated PPI switch predictions or full v50/M39 builds. The
 public `get_ppi_switches()` endpoint-attribution issue remains a separate
 scientific blocker. On macOS, headless browser/native tests still need access
 to GUI services; an engine abort before page creation is not an app assertion.
+
+## Genomic event highlights
+
+The source suite tests list parsing, assembly bounds, exact-only projection,
+RNA order, intron/UTR/noncoding/unavailable states, terminal-stop exclusion,
+codon completeness across exon junctions, and build-scoped state restoration.
+An independent per-base oracle covers 30,012 small intervals with phase-one
+and phase-two split codons on both strands.
+
+Against a prepared full build and running server, use a disposable Playwright
+profile (Playwright is a test dependency, not an app dependency):
+
+```bash
+BROWSER_ORIGIN=http://127.0.0.1:8000 \
+  BROWSER_ENGINE=chromium \
+  PLAYWRIGHT_MODULE=/path/to/node_modules/playwright \
+  node tests/ui/event_highlights.cjs
+```
+
+Repeat with `BROWSER_ENGINE=firefox`, and with
+`EVENT_DATASET=mouse-gencode-m34` when that full build is installed. Optional
+`CHROME_EXECUTABLE` selects a local Chrome. `EVENT_DPR=2` tests retina rendering;
+`EVENT_SCREENSHOT` and `EVENT_NARROW_SCREENSHOT` capture wide/narrow layouts.
+The script checks SP1/TPM1/FGFR3 plus reverse-strand TP53 for human, or
+Sp1/Tpm1/Fgfr3 plus reverse-strand Brca1 for mouse. Expected protein coordinates
+are calculated directly from API coding bases, independently of the frontend
+projection helper. Checks include comparison isoforms, intron/UTR exclusions,
+non-disruptive adding, fit/pan/zoom, invalid-input atomicity, sessions,
+Back/Forward, reload, other-chromosome context, dataset isolation, and absence
+of browser errors/external runtime requests.
+
+These tests assess coordinate highlighting, not predictions of splice,
+sequence, domain, or interaction changes. Scientific PDF reports intentionally
+do not contain user highlight context.

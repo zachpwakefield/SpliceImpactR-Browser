@@ -16,6 +16,7 @@ import { AboutDiagnosticsDialog } from "./components/AboutDiagnosticsDialog";
 import { ComparisonPanel } from "./components/ComparisonPanel";
 import { PPIContextPanel } from "./components/PPIContextPanel";
 import { FilterBar } from "./components/FilterBar";
+import { EventHighlights } from "./components/EventHighlights";
 import { GenomeCanvas } from "./components/GenomeCanvas";
 import { HelpOverlay } from "./components/HelpOverlay";
 import { PdfExportDialog } from "./components/PdfExportDialog";
@@ -29,6 +30,7 @@ import { WorkspaceEntityMenu } from "./components/WorkspaceEntityMenu";
 import { DEFAULT_VIEW_STATE } from "./data/sp1";
 import { APPLICATION_MARK, applicationDocumentTitle } from "./lib/application";
 import { fitInterval, formatLocus, zoomLocus } from "./lib/coordinates";
+import { checkHighlightBounds } from "./lib/eventHighlights";
 import { enabledFeatureSources, filterTranscriptsWithContext, transcriptMatchesFilters } from "./lib/filters";
 import { browserKeyboardCommand } from "./lib/keyboard";
 import {
@@ -117,6 +119,8 @@ interface BuildMismatch {
   current: string;
 }
 
+const EMPTY_EVENT_HIGHLIGHTS: Locus[] = [];
+
 const EMPTY_GENE: Gene = {
   id: "",
   versionedId: "",
@@ -163,6 +167,7 @@ export default function App() {
   const [view, setView] = useState<BrowserViewState>(() =>
     parseViewState(window.location.search, DEFAULT_VIEW_STATE),
   );
+  const eventHighlights = view.genomicHighlights ?? EMPTY_EVENT_HIGHLIGHTS;
   const viewRef = useRef(view);
   const transcriptRevealRequestId = useRef(0);
   const pendingTranscriptReveal = useRef<TranscriptRevealRequest | null>({
@@ -285,6 +290,12 @@ export default function App() {
         setLocalWorkspaceLoaded(true);
         const restored = restoreViewState(window.location.search, defaultView, nextManifest.buildHash);
         const initial = chooseInitialView(window.location.search, restored.view, loadedWorkspace);
+        let highlightRestoreError: string | undefined;
+        try { checkHighlightBounds(initial.view.genomicHighlights ?? [], nextManifest.chromosomeLengths); }
+        catch (error) {
+          initial.view = { ...initial.view, genomicHighlights: [] };
+          highlightRestoreError = `Saved event highlights were not applied: ${errorMessage(error)}`;
+        }
         if (!hasExplicitViewState(window.location.search) && !initial.restoredLastView) {
           pendingDefaultProteinGeneId.current = initial.view.selectedGeneId;
         }
@@ -299,7 +310,8 @@ export default function App() {
         viewRef.current = initial.view;
         setView(initial.view);
         writeHistory(initial.view, false);
-        if (initial.restoredLastView) setSessionMessage("Restored the last validated local view.");
+        if (highlightRestoreError) setSessionMessage(highlightRestoreError);
+        else if (initial.restoredLastView) setSessionMessage("Restored the last validated local view.");
         else if (workspaceStatus === "invalid") setSessionMessage("Saved workspace data was invalid and was safely ignored.");
         else if (workspaceStatus === "build-mismatch") setSessionMessage("Saved workspace belongs to another annotation build and was safely ignored.");
       })
@@ -339,6 +351,13 @@ export default function App() {
         return;
       }
       const restored = restoreViewState(window.location.search, manifestDefaultView(manifest), manifest.buildHash);
+      let invalidHighlights = false;
+      try { checkHighlightBounds(restored.view.genomicHighlights ?? [], manifest.chromosomeLengths); }
+      catch (error) {
+        restored.view = { ...restored.view, genomicHighlights: [] };
+        invalidHighlights = true;
+        setSessionMessage(`Event highlights were not applied: ${errorMessage(error)}`);
+      }
       setBuildMismatch(restored.mismatchedBuild
         ? { requested: restored.mismatchedBuild, current: manifest.buildHash }
         : undefined);
@@ -348,7 +367,7 @@ export default function App() {
       );
       viewRef.current = restored.view;
       setView(restored.view);
-      if (restored.mismatchedBuild) writeHistory(restored.view, false);
+      if (restored.mismatchedBuild || invalidHighlights) writeHistory(restored.view, false);
     };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
@@ -1615,6 +1634,11 @@ export default function App() {
       )}
       {regionState === "loading" && <div className="local-progress" role="status"><span />Loading visible interval…</div>}
 
+      {workspaceReady && <EventHighlights highlights={eventHighlights} chromosomeLengths={manifest.chromosomeLengths}
+        gene={gene} selected={selectedTranscript} comparison={comparisonTranscript}
+        onChange={(genomicHighlights) => commitView({ genomicHighlights }, true)}
+        onNavigate={(locus) => commitView({ locus }, true)} />}
+
       <main className={`browser-body ${workspaceReady && inspectorOpen ? "with-inspector" : ""}`}>
         {workspaceReady ? <>
           <section className="browser-workspace" aria-label={`${gene.symbol} genomic workspace`}>
@@ -1675,6 +1699,7 @@ export default function App() {
                 selectedTranscriptId={selectedTranscript?.id ?? ""}
                 selectedFeatureId={view.selectedFeatureId}
                 region={region}
+                highlights={eventHighlights}
                 onSelectGene={selectRegionGene}
                 onSelectTranscript={selectTranscript}
                 onSelectFeature={selectFeature}
@@ -1787,6 +1812,7 @@ export default function App() {
           onQuickPdf={() => void saveQuickPdf()}
           quickPdfBusy={quickPdfBusy}
           onRestore={(restored, annotations) => {
+            checkHighlightBounds(restored.genomicHighlights ?? [], manifest.chromosomeLengths);
             navigationController.current?.abort();
             pendingDefaultProteinGeneId.current = undefined;
             setBuildMismatch(undefined);

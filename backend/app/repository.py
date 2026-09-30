@@ -368,6 +368,8 @@ class AnnotationRepository:
                 "versionedId": exon.get("exon_id_versioned") or exon.get("exon_id"),
                 "start0": exon.get("start0"),
                 "end0": exon.get("end0"),
+                "transcriptStart0": exon.get("transcript_start0"),
+                "transcriptEnd0": exon.get("transcript_end0"),
             }
             for exon in exons
         ]
@@ -383,6 +385,8 @@ class AnnotationRepository:
                 "end0": item.get("end0"),
                 "transcriptStart0": item.get("transcript_start0"),
                 "transcriptEnd0": item.get("transcript_end0"),
+                "codingStart0": item.get("coding_start0"),
+                "codingEnd0": item.get("coding_end0"),
                 "phase": item.get("phase"),
             }
             for item in cds

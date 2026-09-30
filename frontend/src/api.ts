@@ -228,6 +228,10 @@ export function normalizeManifest(value: unknown): BuildManifest {
     gencodeRelease: release,
     ensemblRelease: ensembl,
     assembly: declaredAssembly ?? "GRCh38.p14",
+    chromosomeLengths: Object.fromEntries(Object.entries(objectValue(record.chromosomeLengths) ?? {}).filter(
+      (entry): entry is [string, number] => /^[A-Za-z0-9_.-]+$/u.test(entry[0])
+        && typeof entry[1] === "number" && Number.isSafeInteger(entry[1]) && entry[1] > 0,
+    )),
     buildHash,
     dataSource: "api",
     referenceAvailable,
@@ -490,6 +494,8 @@ export function normalizeDetailedTranscript(value: unknown, fallback?: Transcrip
       rank,
       start0,
       end0,
+      transcriptStart0: firstNumber(item, ["transcriptStart0"]),
+      transcriptEnd0: firstNumber(item, ["transcriptEnd0"]),
       cdsStart0: starts.length ? Math.min(...starts) : undefined,
       cdsEnd0: ends.length ? Math.max(...ends) : undefined,
       phase: rawPhase === 0 || rawPhase === 1 || rawPhase === 2 ? rawPhase : undefined,
@@ -504,6 +510,23 @@ export function normalizeDetailedTranscript(value: unknown, fallback?: Transcrip
   return {
     ...summary,
     exons,
+    translationMapping: mapping ? {
+      status: firstString(mapping, ["status"]) ?? "unknown",
+      reason: firstString(mapping, ["reason"]) ?? "No verified translation mapping.",
+      cdsStart0: firstNumber(mapping, ["cdsStart0"]),
+      cdsEnd0: firstNumber(mapping, ["cdsEnd0"]),
+    } : undefined,
+    codingSegments: rawCds.flatMap((raw) => {
+      const item = objectValue(raw);
+      if (!item) return [];
+      const exonRank = firstNumber(item, ["exonRank"]);
+      const start0 = firstNumber(item, ["start0"]);
+      const end0 = firstNumber(item, ["end0"]);
+      const codingStart0 = firstNumber(item, ["codingStart0"]);
+      const codingEnd0 = firstNumber(item, ["codingEnd0"]);
+      if ([exonRank, start0, end0, codingStart0, codingEnd0].some((value) => value === undefined)) return [];
+      return [{ exonRank: exonRank!, start0: start0!, end0: end0!, codingStart0: codingStart0!, codingEnd0: codingEnd0! }];
+    }),
     detailState: exons.length || rawExons.length === 0 ? "ready" : "error",
   };
 }

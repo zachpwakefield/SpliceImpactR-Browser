@@ -36,3 +36,20 @@ Canonical genomic coordinates remain integers. Interval overlap uses integer bin
 - Exact mappings cover `(aa_end - aa_start + 1) * 3` nucleotides.
 - Partial and unresolved mappings carry an explicit reason; unresolved mappings can render on the continuous protein lane only.
 
+## User genomic event projection
+
+User event input follows the same display-to-machine conversion above and is
+checked against the selected profile's verified chromosome lengths. It does
+not alter annotations. For each exon intersection, cumulative exon lengths
+give spliced transcript positions in 5-prime to 3-prime order. Exact coding
+pieces then supply translation-relative nucleotide offsets. A touched interval
+`[nt_start0, nt_end0)` projects to inclusive residues
+`floor(nt_start0 / 3) + 1` through `floor((nt_end0 - 1) / 3) + 1`.
+
+Coding pieces must cover exactly `3 * protein_length` bases without gaps, and
+their offsets must agree with the spliced RNA map. Adjacent coding pieces are
+joined before testing codon completeness so a fully covered split codon is not
+mistaken for a partial event. Original FASTA CDS header bounds may include a
+terminal stop triplet; only validated GTF coding pieces enter the protein map.
+Partial/unresolved maps never produce event protein coordinates. These are
+residues touched by genomic bases, not predictions of sequence or feature change.

@@ -69,6 +69,7 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
           <div><dt>Save PDF</dt><dd>Choose transcripts and report sections, then download selectable text and vector structures</dd></div>
           <div><dt>Quick PDF</dt><dd>Reuse the last successful build-scoped PDF preset after strict revalidation</dd></div>
           <div><dt>Minimap</dt><dd>Click, drag, or focus and use paging keys to move the transcript viewport</dd></div>
+          <div><dt>Event highlights</dt><dd>Add one or multiple genomic intervals; see exon-overlapping transcript bases and touched protein residues in exact coding maps</dd></div>
           <div><dt>Tab / Enter</dt><dd>Reach transcript disclosure, pinning, reordering, filters, tables, and inspector tabs</dd></div>
           <div><dt>Escape</dt><dd>Close this help panel or the search palette</dd></div>
         </dl>

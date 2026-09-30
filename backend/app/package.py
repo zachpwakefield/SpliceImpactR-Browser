@@ -223,6 +223,7 @@ class RuntimePackage:
                 "pdfReports": True,
                 "ppiPredictions": False,
                 "ppiContext": ppi_context.available,
+                "genomicEventHighlights": True,
             }
         )
         density_levels: list[int] = []
@@ -259,6 +260,7 @@ class RuntimePackage:
             "release": release,
             "ensemblRelease": ensembl,
             "assembly": assembly,
+            "chromosomeLengths": dict(self.profile.contigs),
             "technicalPreview": self.technical_preview,
             "scope": self.manifest.get("scope"),
             "featureSources": sources,

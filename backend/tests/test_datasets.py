@@ -125,6 +125,8 @@ class DatasetRuntimeTests(unittest.TestCase):
             mouse = client_b.get("/api/v1/manifest?dataset=mouse-gencode-m39").json()
             self.assertEqual(mouse["defaultView"]["selectedGeneId"], "ENSMUSG00000185591")
             self.assertEqual(mouse["assembly"], "GRCm39")
+            self.assertEqual(mouse["chromosomeLengths"]["chrX"], 169_476_592)
+            self.assertTrue(mouse["capabilities"]["genomicEventHighlights"])
             self.assertFalse(mouse["capabilities"]["ppiPredictions"])
             self.assertEqual(mouse["featureSources"][1]["status"], "unavailable")
             self.assertEqual(mouse["featureSources"][1]["recordCount"], 0)

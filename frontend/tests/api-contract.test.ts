@@ -23,6 +23,37 @@ test("manifest normalization preserves the immutable build and verified local re
   assert.deepEqual(manifest.featureSources, ["interpro", "pfam", "mobidblite"]);
 });
 
+test("event highlighting receives active-assembly contig lengths, not a hard-coded human chromosome size", () => {
+  const manifest = normalizeManifest({
+    datasetId: "mouse-gencode-m34", species: "mouse", release: "GENCODE M34", ensemblRelease: 111,
+    assembly: "GRCm39", buildHash: "mouse-build", chromosomeLengths: { chrX: 169476592, chr1: 195154279,
+      chrY: null, invalid: -1, fractional: 1.5, "<script>": 1 }, featureSources: [],
+  });
+  assert.deepEqual(manifest.chromosomeLengths, { chrX: 169476592, chr1: 195154279 });
+});
+
+test("detailed transcripts retain exact coding offsets and RNA offsets without turning partial nulls into zero", () => {
+  const raw = {
+    id: "ENST_TEST", name: "TEST-201", start0: 100, end0: 112, strand: "+", transcriptLength: 12,
+    cdsLength: 6, proteinLength: 2, exons: [{ rank: 1, id: "ENSE_TEST", start0: 100, end0: 112,
+      transcriptStart0: 0, transcriptEnd0: 12 }],
+    cdsSegments: [{ exonRank: 1, start0: 103, end0: 109, transcriptStart0: 3, transcriptEnd0: 9,
+      codingStart0: 0, codingEnd0: 6, phase: 0 }],
+    translationMapping: { cdsStart0: 3, cdsEnd0: 9, status: "exact", reason: "Verified translation" },
+  };
+  const tx = normalizeDetailedTranscript(raw)!;
+  assert.deepEqual(tx.codingSegments, [{ exonRank: 1, start0: 103, end0: 109, codingStart0: 0, codingEnd0: 6 }]);
+  assert.equal(tx.exons[0].transcriptStart0, 0);
+  assert.equal(tx.exons[0].transcriptEnd0, 12);
+  assert.deepEqual(tx.translationMapping, raw.translationMapping);
+  const partial = normalizeDetailedTranscript({ ...raw,
+    cdsSegments: [{ ...raw.cdsSegments[0], codingStart0: null, codingEnd0: null }],
+    translationMapping: { ...raw.translationMapping, status: "partial" },
+  })!;
+  assert.deepEqual(partial.codingSegments, []);
+  assert.equal(partial.translationMapping?.status, "partial");
+});
+
 test("manifest normalization keeps a full transcript package valid without a reference", () => {
   const manifest = normalizeManifest({
     schemaVersion: "1.1.0",

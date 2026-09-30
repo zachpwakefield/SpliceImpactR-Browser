@@ -9,6 +9,7 @@ Prepare the data once, then browse offline.
 - View protein domains, motifs, transmembrane regions, signal peptides and
   disorder on both genomic and protein coordinates.
 - Compare isoforms using their actual protein-feature annotations and ranges.
+- Highlight genomic event intervals across transcript and protein coordinates.
 - Inspect sequences and export tables, comparisons and PDF reports.
 - Keep favorites, notes and sessions locally.
 
@@ -94,6 +95,11 @@ For a clickable macOS/Dock launcher, follow the
 InterPro, Pfam, CDD, TMHMM, SignalP, MobiDB-lite and ELM are separately
 filterable. Genomic feature segments follow coding exons; the protein view keeps
 a continuous N-to-C scale.
+
+To mark an event, open **Event highlights**, paste `chrX:1-3,5-9,22-50`
+(or your actual intervals), then **Add highlights**. Coordinates are 1-based
+inclusive. The app shows exon-overlapping transcript bases and residues touched
+in each verified coding map—not predicted effects on splicing or proteins.
 
 Optional human **PPI context** adds recorded gene partners and compares their
 listed feature requirements with each isoform's annotations. It is not a

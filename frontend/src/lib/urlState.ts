@@ -12,6 +12,7 @@ import {
 } from "../types";
 import { formatLocus, parseLocus } from "./coordinates";
 import { MAX_COLLAPSED_PROTEIN_TRANSCRIPTS, MAX_EXPANDED_TRANSCRIPTS } from "./navigation";
+import { highlightKey, parseHighlightInput } from "./eventHighlights";
 
 const TABS: InspectorTab[] = ["gene", "transcript", "compare", "feature", "sequence", "table"];
 const MODES: DisplayModeSetting[] = ["auto", "overview", "compact", "labeled", "expanded"];
@@ -20,6 +21,7 @@ const EXPLICIT_VIEW_KEYS = new Set([
   "build", "gene", "locus", "tx", "compareTx", "txOrder", "expanded", "pinned",
   "allProteins", "collapsedProteins",
   "sources", "classes", "excludeBiotypes", "flags", "density", "canvasKeys", "tab", "mode", "feature",
+  "hi",
 ]);
 
 export function hasExplicitViewState(search: string): boolean {
@@ -61,6 +63,11 @@ export function parseViewState(search: string, fallback: BrowserViewState): Brow
   const modeValue = params.get("mode") as DisplayModeSetting | null;
   const densityValue = params.get("density") as RowDensity | null;
   const canvasKeys = params.get("canvasKeys");
+  let genomicHighlights = fallback.genomicHighlights;
+  if (params.has("hi")) {
+    try { genomicHighlights = params.get("hi") ? parseHighlightInput(params.get("hi")!) : []; }
+    catch { genomicHighlights = []; } // Untrusted URLs never create partial or unbounded event lists.
+  }
   const expandedTranscriptIds = params.has("expanded")
     ? transcriptOrderValues(params.get("expanded"), MAX_EXPANDED_TRANSCRIPTS)
     : fallback.expandedTranscriptIds;
@@ -113,6 +120,7 @@ export function parseViewState(search: string, fallback: BrowserViewState): Brow
     inspectorTab: tabValue && TABS.includes(tabValue) ? tabValue : fallback.inspectorTab,
     selectedFeatureId: params.get("feature") || undefined,
     displayMode: modeValue && MODES.includes(modeValue) ? modeValue : fallback.displayMode,
+    ...(genomicHighlights !== undefined ? { genomicHighlights } : {}),
   };
 }
 
@@ -140,6 +148,7 @@ export function encodeViewState(state: BrowserViewState): string {
   params.set("tab", state.inspectorTab);
   params.set("mode", state.displayMode);
   if (state.selectedFeatureId) params.set("feature", state.selectedFeatureId);
+  if (state.genomicHighlights !== undefined) params.set("hi", state.genomicHighlights.map(highlightKey).join(";"));
   return `?${params.toString()}`;
 }
 
