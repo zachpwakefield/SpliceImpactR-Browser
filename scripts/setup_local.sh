@@ -26,7 +26,8 @@ while [[ $# -gt 0 ]]; do
     --help|-h)
       printf '%s\n' 'Usage: ./scripts/setup_local.sh [--no-start] [--with-exon-audit]' \
         '       [--dataset ID] [--cache DIR] [--query-cache DIR] [--force-features]' \
-        'Reviewed IDs: human-gencode-v45 (default), human-gencode-v50, mouse-gencode-m39.' \
+        'Main IDs: human-gencode-v45 (default), mouse-gencode-m34.' \
+        'Experimental IDs: human-gencode-v50, mouse-gencode-m39.' \
         'Installs project dependencies, prepares all models in the selected annotation, builds,' \
         'and starts the local browser. Requires Python >=3.9, Node >=22.13, R >=4.6,' \
         'and a network connection for the first setup. Relative paths use the repo root.'

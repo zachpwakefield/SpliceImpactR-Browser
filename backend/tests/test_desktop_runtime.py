@@ -191,25 +191,26 @@ class DesktopRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             root, dependencies = self.project(base, reference=True)
-            for identifier in ("human-gencode-v50", "mouse-gencode-m39"):
+            for identifier in ("human-gencode-v50", "mouse-gencode-m39", "mouse-gencode-m34"):
                 synthetic_dataset(root, identifier)
             archive = base / "app/Runtime.zip"
-            manifest = build_runtime(root, archive, site_packages=dependencies, dataset="mouse-gencode-m39")
-            self.assertEqual(manifest["defaultDatasetId"], "mouse-gencode-m39")
-            self.assertEqual(len(dataset_packages(manifest)), 3)
-            self.assertEqual(manifest["buildHash"], "mouse-gencode-m39-fixture-hash")
+            manifest = build_runtime(root, archive, site_packages=dependencies, dataset="mouse-gencode-m34")
+            self.assertEqual(manifest["defaultDatasetId"], "mouse-gencode-m34")
+            self.assertEqual(len(dataset_packages(manifest)), 4)
+            self.assertEqual(manifest["buildHash"], "mouse-gencode-m34-fixture-hash")
             staging, final = base / "stage", base / "final"
             with zipfile.ZipFile(archive) as source:
                 source.extractall(staging)
                 self.assertFalse(any(name.endswith(".sqlite") for name in source.namelist()))
             materialize_runtime(root, staging, final)
             verified = verify_cached_runtime(final)
-            self.assertEqual(verified["defaultDatasetId"], "mouse-gencode-m39")
+            self.assertEqual(verified["defaultDatasetId"], "mouse-gencode-m34")
             client = TestClient(create_app(project_root=final, dataset=verified["defaultDatasetId"]), base_url="http://127.0.0.1")
             self.assertEqual(client.get("/api/v1/manifest").json()["species"], "mouse")
-            self.assertEqual(len(client.get("/api/v1/datasets").json()["datasets"]), 3)
+            self.assertEqual(len(client.get("/api/v1/datasets").json()["datasets"]), 4)
             self.assertEqual(client.get("/reference/genome.fa?dataset=human-gencode-v45", headers={"Range": "bytes=7-10"}).content, b"ACGT")
             self.assertEqual(client.get("/reference/genome.fa?dataset=mouse-gencode-m39").status_code, 404)
+            self.assertEqual(client.get("/reference/genome.fa?dataset=mouse-gencode-m34").status_code, 404)
             for declaration in manifest["datasetPackages"]:
                 self.assertTrue((final / declaration["packageDirectory"] / "annotation.sqlite").is_file())
 

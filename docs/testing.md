@@ -44,7 +44,7 @@ cd ..
 and runs `tests/r/test_browser_annotation.R`. The latter independently checks
 all TSLs, unscored values, other biotypes, incomplete CDS, PAR_Y IDs, both-strand
 split codons, and the released package's public manual-feature/exon APIs using
-synthetic data. It also exercises all three dataset profiles, release/species/
+synthetic data. It also exercises all reviewed dataset profiles, release/species/
 assembly mismatches, original feature bounds, distinct coincident accessions,
 valid-empty versus unavailable sources, cache reuse and mocked public accession.
 It does not download a scientific fixture. `--require-frontend`
@@ -57,7 +57,7 @@ or claim a native generated-data installation.
 
 ## Dataset-specific checks
 
-Use `--dataset` throughout preparation/build/runtime. The three reviewed IDs,
+Use `--dataset` throughout preparation/build/runtime. Reviewed IDs,
 raw inputs and cache directories are in [genome_datasets.md](genome_datasets.md).
 Source tests prove contracts, not full v50/M39 installation.
 
@@ -65,13 +65,13 @@ For an optional real release-backed **single-gene** feature-query checkpoint:
 
 ```bash
 Rscript --vanilla tests/r/test_dataset_release_smoke.R \
-  --dataset human-gencode-v50 --gene PGK1 \
-  --gtf /path/to/gencode.v50.annotation.gtf.gz \
-  --protein-fa /path/to/gencode.v50.pc_translations.fa.gz \
+  --dataset mouse-gencode-m34 --gene Sp1 \
+  --gtf /path/to/gencode.vM34.annotation.gtf.gz \
+  --protein-fa /path/to/gencode.vM34.pc_translations.fa.gz \
   --output /path/to/gene-checkpoint.json
 ```
 
-The mouse equivalent uses `--dataset mouse-gencode-m39 --gene Sp1` and M39
+The human equivalent uses `--dataset human-gencode-v45 --gene SP1` and v45
 files. This verifies official raw bytes, retained gene models/translation IDs,
 the pinned mart identity and returned amino-acid bounds. It does **not** build
 SQLite, prove genomic projection, exercise a full cold SpliceImpactR accession,
@@ -145,8 +145,8 @@ different data package can be tested with, for example:
 ```bash
 python3 scripts/smoke_test_api.py \
   --base-url http://127.0.0.1:8010 \
-  --dataset mouse-gencode-m39 \
-  --gene-query MYGENE \
+  --dataset mouse-gencode-m34 \
+  --gene-query Sp1 \
   --expect-scope full
 ```
 
@@ -198,7 +198,7 @@ private diagnostics to a public issue.
 ### Optional automated browser regressions
 
 Playwright is an external test dependency, not a browser runtime dependency.
-The three-dataset selector/isolation test runs against deliberately tiny
+The four-dataset selector/isolation test runs against deliberately tiny
 synthetic contracts, created outside the repository:
 
 ```bash
@@ -224,6 +224,25 @@ BROWSER_ORIGIN=http://127.0.0.1:8000 node tests/ui/protein_defaults.cjs
 This test must not run against the tiny selector fixture or an unrelated
 release. Run both browser engines and keep installation/projection/determinism
 claims separate from these observed interaction checks.
+
+Against a running **complete mouse M34** package:
+
+```bash
+BROWSER_ORIGIN=http://127.0.0.1:8000 node tests/ui/mouse_m34.cjs
+BROWSER_ORIGIN=http://127.0.0.1:8000 BROWSER_ENGINE=firefox node tests/ui/mouse_m34.cjs
+```
+
+This checks the actual release-111 identity, complete Sp1/Tpm1/Fgfr3 isoform
+counts, All protein tracks, individual feature-call comparison, mouse PPI
+exclusion and loopback-only runtime requests. It requires the production
+frontend and M34 data, not the synthetic selector fixture.
+
+`tests/data/test_mouse_build.py` runs automatically with the source suite when
+`data/builds/mouse_gencode_m34` exists. Its full-build checks cover independent
+raw transcript-ID/TSL inventories, release-pinned feature receipts, exact-only
+projection, SQLite integrity and canonical content hashes. Preserve first-build
+receipts and use `scripts/verify_deterministic_build.py` after a second M34 build
+as described below; the historical v45 release script is not the M34 gate.
 
 ## 5. Full-build and release checks
 

@@ -62,9 +62,9 @@ The original annotation package is not modified.
 All installed validated dataset packages are included, along with the shared
 profile metadata. The toolbar can select among them without R or network access.
 To choose a different native default after preparing it, use
-`./desktop_app/install_macos_app.sh mouse-gencode-m39`. For a bundle-only build,
+`./desktop_app/install_macos_app.sh mouse-gencode-m34`. For a bundle-only build,
 the second argument selects the default:
-`./desktop_app/build_macos_app.sh "desktop_app/dist/SpliceImpactR Browser.app" mouse-gencode-m39`.
+`./desktop_app/build_macos_app.sh "desktop_app/dist/SpliceImpactR Browser.app" mouse-gencode-m34`.
 The installer must be rerun to add a newly prepared dataset to a private runtime;
 it does not download scientific inputs itself.
 

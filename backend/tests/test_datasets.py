@@ -36,6 +36,8 @@ def synthetic_dataset(root: Path, dataset_id: str) -> Path:
         connection.execute("UPDATE contig SET length=? WHERE name='chr12'", (profile.contigs["chr12"],))
     if dataset_id == "human-gencode-v50":
         connection.execute("UPDATE sequence SET sequence=replace(sequence,'M','A')")
+    if dataset_id == "mouse-gencode-m34":
+        connection.execute("UPDATE sequence SET sequence=replace(sequence,'M','G')")
     identity = {"dataset_id": dataset_id, "species": profile["species"], "gencode_release": profile["gencode_release"], "release": profile.release_label, "ensembl_release": profile["ensembl_release"], "assembly": profile["assembly"], "build_hash": dataset_id + "-fixture-hash"}
     for key, value in identity.items():
         connection.execute("INSERT OR REPLACE INTO build_manifest VALUES(?,?)", (key, json.dumps(value)))
@@ -57,7 +59,8 @@ def synthetic_dataset(root: Path, dataset_id: str) -> Path:
 
 class DatasetRuntimeTests(unittest.TestCase):
     def test_closed_profiles_and_exact_release_pairings(self) -> None:
-        expected = {"human-gencode-v45": ("human", 45, 111, "GRCh38.p14"), "human-gencode-v50": ("human", 50, 116, "GRCh38.p14"), "mouse-gencode-m39": ("mouse", "M39", 116, "GRCm39")}
+        expected = {"human-gencode-v45": ("human", 45, 111, "GRCh38.p14"), "human-gencode-v50": ("human", 50, 116, "GRCh38.p14"), "mouse-gencode-m39": ("mouse", "M39", 116, "GRCm39"), "mouse-gencode-m34": ("mouse", "M34", 111, "GRCm39")}
+        self.assertEqual(set(dataset_profiles()), set(expected))
         for identifier, identity in expected.items():
             profile = get_dataset_profile(identifier)
             self.assertEqual(tuple(profile[key] for key in ("species", "gencode_release", "ensembl_release", "assembly")), identity)
@@ -88,6 +91,25 @@ class DatasetRuntimeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             profile_for_metadata({**legacy, "release": "GENCODE v50", "ensembl_release": 116}, legacy_v45=True)
         self.assertEqual(base_stable_id("ensmust00000327443.9"), "ENSMUST00000327443")
+
+    def test_m34_and_m39_do_not_cross_load_shared_mouse_transcript_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for identifier in ("mouse-gencode-m34", "mouse-gencode-m39"):
+                synthetic_dataset(root, identifier)
+            app = create_app(project_root=root, dataset="mouse-gencode-m34")
+            client = TestClient(app, base_url="http://127.0.0.1")
+            for identifier, release, residue in (("mouse-gencode-m34", 111, "G"), ("mouse-gencode-m39", 116, "M"), ("mouse-gencode-m34", 111, "G")):
+                manifest = client.get("/api/v1/manifest", params={"dataset": identifier}).json()
+                self.assertEqual(manifest["ensemblRelease"], release)
+                self.assertFalse(manifest["capabilities"]["ppiPredictions"])
+                response = client.get("/api/v1/transcripts/ENSMUST00000327443/sequence", params={"dataset": identifier})
+                self.assertEqual(response.json()["sequence"][0], residue)
+                self.assertEqual(response.headers["x-transcript-browser-dataset"], identifier)
+                exported = client.get("/api/v1/export", params={"dataset": identifier, "entity": "gene", "id": "ENSMUSG00000185591"}).json()
+                self.assertEqual(exported["_provenance"]["ensemblRelease"], release)
+                ppi = client.get("/api/v1/genes/ENSMUSG00000185591/ppi-context", params={"dataset": identifier}).json()
+                self.assertEqual(ppi["status"], "not_applicable")
 
     def test_catalog_scoped_api_export_and_independent_tabs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

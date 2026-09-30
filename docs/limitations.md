@@ -2,13 +2,16 @@
 
 The checked normal package materializes the full primary-contig GENCODE v45 annotation and all seven locally supplied protein-feature sources. The separate SP1 package remains an explicitly labeled acceptance fixture; normal startup cannot silently fall back to it.
 
-Application 1.2 adds reviewed human v50/Ensembl116 and mouse M39/Ensembl116
-profiles and dataset-scoped runtime selection. They are separate scientific
-builds, not additional models inserted into v45. Their source/API fixture tests
-and real gene checkpoints must not be mistaken for full genome-wide setup
-acceptance; current validation evidence is recorded in `setup_validation.md`.
-Only three reviewed profiles are selectable for preparation; adding another
-release requires verified metadata and tests. Optional mouse whole-genome
+The main installation profiles are human v45/Ensembl111/GRCh38.p14 and mouse
+M34/Ensembl111/GRCm39. The full M34 preparation, repeated deterministic build,
+API/browser checks and isolated Mac installation passed on September 30, 2026;
+see [setup_validation.md](setup_validation.md) for evidence and review boundaries.
+The registry also retains experimental human v50/Ensembl116 and mouse
+M39/Ensembl116 profiles. Their source/API fixtures and gene checkpoints are not
+full genome-wide setup acceptance. These are separate scientific builds, not
+additional models inserted into v45 or M34. Four reviewed profiles are
+selectable for preparation; adding another release requires verified metadata
+and tests. Optional mouse whole-genome
 reference serving and PPI prediction display are not implemented. Optional
 human gene-level PPI context and focal feature observations are supported
 separately; they do not enable interaction-switch predictions.
@@ -53,7 +56,7 @@ The release makes only the claims supported by the local inputs:
 - Quick PDF stores a configuration preset, not a generated PDF or scientific result. Any stale build/transcript/section/source/range condition returns the user to the full bounded dialog; there is no promise that a prior preset applies to a different gene.
 - The transcript minimap is a navigation summary of the current shared row layout, not genomic density or biological rank. It appears only for overflowing transcript rows, and its markers identify UI context rather than annotation significance.
 - The About/Diagnostics receipt is intentionally support-oriented and allow-listed. It reports the loopback origin and observed resource count but does not prove that a machine is globally offline, and it omits private notes, history, sequences, usernames, and absolute home paths by design.
-- Application version `1.2.0` and each annotation build hash are independent. Installing a new interface does not imply new scientific data; conversely, a future annotation package requires its own build identity and validation even if the app version is unchanged.
+- Application version `1.2.1` and each annotation build hash are independent. Installing a new interface does not imply new scientific data; conversely, a future annotation package requires its own build identity and validation even if the app version is unchanged.
 
 The application-1.1.2 source engineering gate passed on 2026-07-14 with 32 data, 25 backend/API/PDF, and 112 frontend tests (169 total), plus TypeScript, production build, offline audit, deterministic-build verification, full-package startup, and conflict-copy scan. Its focused search tests cover unique exact gene-symbol precedence, genuine duplicate-symbol ambiguity, same-gene transcript context, exact stable identifiers, prefix-only choice, and empty results. The patch changes no annotation database, schema, or immutable build identity. Native packaging/smoke and active-tree synchronization for 1.1.2 remain unrecorded and must not be inferred from this source gate.
 

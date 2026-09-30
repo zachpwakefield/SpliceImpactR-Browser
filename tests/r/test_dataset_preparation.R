@@ -5,11 +5,14 @@ local({
   source("r/archive_features.R")
   registry <- read_browser_dataset_profiles("backend/data/dataset_profiles.json")
   profiles <- registry$profiles
-  stopifnot(identical(names(profiles), c("human-gencode-v45", "human-gencode-v50", "mouse-gencode-m39")),
+  stopifnot(identical(names(profiles), c("human-gencode-v45", "human-gencode-v50", "mouse-gencode-m39", "mouse-gencode-m34")),
             profiles[[1L]]$gencode_release == 45L, profiles[[1L]]$ensembl_release == 111L,
             profiles[[2L]]$gencode_release == 50L, profiles[[2L]]$ensembl_release == 116L,
             identical(profiles[[3L]]$gencode_release, "M39"), profiles[[3L]]$ensembl_release == 116L,
-            identical(profiles[[3L]]$biomart$dataset, "mmusculus_gene_ensembl"))
+            identical(profiles[[3L]]$biomart$dataset, "mmusculus_gene_ensembl"),
+            identical(profiles[[4L]]$gencode_release, "M34"), profiles[[4L]]$ensembl_release == 111L,
+            identical(profiles[[4L]]$biomart$host, "https://jan2024.archive.ensembl.org"),
+            identical(profiles[[4L]]$biomart$dataset, "mmusculus_gene_ensembl"))
   fails <- function(expression) stopifnot(inherits(try(force(expression), silent = TRUE), "try-error"))
   fails(browser_dataset_profile(registry, "human-gencode-v999"))
   directory <- tempfile("browser-dataset-tests-")
@@ -195,5 +198,5 @@ local({
     cache_info = function(cache) info[FALSE, ], cache_path = function(cache, rid) path_for_rid(rid)))
   fails(browser_resolve_raw_assets(profile, file.path(directory, "partial-explicit"), directory,
                                   explicit = c(gtf = input_paths[[1L]], transcripts = NA_character_, translations = NA_character_)))
-  cat("Dataset preparation passed: all three release profiles, strict raw identity/cache provenance, public SpliceImpactR accession, complete models, species-aware ELM, source availability, and original feature intervals.\n")
+  cat("Dataset preparation passed: all reviewed release profiles, strict raw identity/cache provenance, public SpliceImpactR accession, complete models, species-aware ELM, source availability, and original feature intervals.\n")
 })

@@ -5,7 +5,7 @@ The shareable browser keeps scientific inputs out of the repository. `scripts/pr
 ## Pinned sources
 
 - SpliceImpactR from Bioconductor (the current release is 1.0.0 in Bioconductor 3.23/R 4.6; the generated manifest records the installed version).
-- Reviewed GENCODE/Ensembl profiles: human v45/111, human v50/116, mouse M39/116 (raw GTF, transcript FASTA and translated-protein FASTA).
+- Main setup profiles: human v45/111 and mouse M34/111 (raw GTF, transcript FASTA and translated-protein FASTA). The newer human v50/116 and mouse M39/116 profiles remain experimental; their full-build gates have not passed.
 - ELM for public validated motif instances, mapped/sequence-confirmed by the
   preparation adapter and normalized with SpliceImpactR.
 - Optional Ensembl release 115 GRCh38.p14 top-level reference FASTA for byte-range serving. The builder checks the reference SHA-256 and `.fai` index against the values in `backend/builder/constants.py` when this input is supplied.
@@ -23,8 +23,9 @@ all three of `--gtf`, `--transcript-fa`, and `--protein-fa`.
 
 ## Annotation is not filtered
 
-Every source gene/transcript model is retained: 63,187 genes and 252,930
-transcripts in this pinned raw GTF. TSL 1–5, unscored/NA values, all biotypes, and
+Every source gene/transcript model is retained: human v45 has 63,187 genes and
+252,930 transcripts; mouse M34 has 57,126 genes and 149,076 transcripts.
+TSL 1–5, unscored/NA values, all biotypes, and
 `cds_start_NF`/`cds_end_NF` models are included. A SHA-256 of the complete sorted
 transcript inventory is compared with the builder's independently imported
 inventory. TSL and CDS-completeness flags are metadata, not selection rules.
@@ -74,6 +75,34 @@ The seven source tables map to browser lanes as follows:
 The browser keeps source identity and retrieval method visible. It does not turn a Pfam, CDD, or InterPro row into a prediction class merely because it has a domain-like name.
 
 ## Install and run
+
+### System prerequisites
+
+Install Python 3.9–3.14, Node.js 22.13+ and R 4.6+ before running
+`./scripts/setup_local.sh`. Setup uses pnpm 11.7+ if installed, or a pinned
+pnpm through `npx`; a global pnpm installation is not required.
+
+On Ubuntu/Debian or WSL2 Ubuntu, install the R source-build prerequisites first:
+
+```bash
+sudo apt-get update
+sudo apt-get install --no-install-recommends -y \
+  build-essential gfortran cmake pkg-config \
+  libcurl4-openssl-dev libssl-dev libxml2-dev libpng-dev \
+  zlib1g-dev libbz2-dev liblzma-dev
+```
+
+Other Linux distributions need their corresponding development packages;
+do not use this command on macOS. Missing `curl/curl.h` or `png.h` prevents
+R dependencies from compiling. A Conda/source-built R installation on macOS
+may also need its matching compiler toolchain and CMake, including for `nloptr`.
+
+If no existing R library is writable, the installer creates R's configured
+personal library. Set `R_LIBS_USER` before setup to choose an isolated library,
+and use the same setting for preparation and builds. R is needed for data
+preparation/building, not for normal browser use.
+
+### SpliceImpactR and annotation inputs
 
 Use the R/Bioconductor release required by the package. The current Bioconductor release lists SpliceImpactR for R 4.6. On a machine with R installed:
 
@@ -151,3 +180,59 @@ the complete [testing instructions](testing.md#5-full-build-and-release-checks)
 to create that receipt and run the release gate.
 
 Once the build is published, copy or archive the resulting `data/builds/<build-id>` locally. Keep it out of GitHub unless a separate data-release policy and licensing review authorizes distribution.
+
+## Prepared input contract
+
+The selected dataset's cache contains the official comprehensive GTF,
+protein-coding transcript and translation FASTA files, seven source tables
+(`interpro.rds`, `pfam.rds`, `cdd.rds`, `tmhmm.rds`, `signalp.rds`,
+`mobidblite.rds`, `elm.rds`), source receipts and
+`spliceimpactr_manifest.json`. `exon_features.rds` is an optional audit output.
+See [dataset locations](genome_datasets.md) for each cache/build directory.
+
+Each source feature table has these columns:
+
+```text
+ensembl_transcript_id  start  stop  chr  strand  feature_id
+clean_name  alt_name  database  ensembl_peptide_id  method  name
+```
+
+Protein intervals are 1-based inclusive amino-acid coordinates. SQLite/API
+genomic geometry is 0-based half-open; visible labels use 1-based inclusive
+coordinates. See the [coordinate contract](coordinate_contract.md).
+
+## Optional human PPI context
+
+After building human v45 and installing SpliceImpactR:
+
+```bash
+Rscript --vanilla scripts/export_ppi_context.R \
+  --dataset human-gencode-v45 \
+  --annotation-manifest data/builds/gencode_v45/manifest.json \
+  --output data/cache/ppi_export_human_v45
+
+.venv/bin/python -m backend.builder.ppi_context \
+  --dataset human-gencode-v45 \
+  --source data/cache/ppi_export_human_v45
+```
+
+Restart the server afterward. Rebuild a Mac runtime to include this optional
+context. The exporter uses the public `SpliceImpactR::get_ppi_interactions()`
+resource; the importer creates a separate immutable sidecar in
+`data/ppi_context/<dataset-id>/` bound to the exact annotation build. It never
+modifies the annotation database or replaces an existing sidecar. Generated
+interaction data is ignored by Git and is not bundled with the source.
+
+Compare displays recorded gene partners, BioGRID/DDI/DMI context and exact
+focal-side feature observations. Partner-side requirements remain separate;
+aggregated feature lists are not reconstructed as paired mechanisms. The
+static resource's network date and Ensembl-release correspondence are unknown;
+its package/data hashes are separate from annotation-build identity. Human
+interaction data is never applied to mouse.
+
+Interaction-switch predictions are disabled because the published
+`get_ppi_switches()` implementation can count a changed token on the partner
+side against the focal gene. This does not mean transcript domains or GTF
+models are misassigned. The browser neither patches nor vendors SpliceImpactR,
+and does not present context as interaction gain/loss, confidence or affinity.
+See [methodology review](review_log.md) and [known limitations](limitations.md).

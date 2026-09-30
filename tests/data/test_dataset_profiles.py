@@ -13,7 +13,7 @@ from backend.builder.constants import FEATURE_COLUMNS, FEATURE_SOURCES, PREPARAT
 from backend.builder.parsers import ucsc_bin
 from backend.builder.schema import connect_database, create_schema, populate_density_tiles
 from backend.builder.source_manifest import read_preparation_manifest
-from backend.datasets import get_dataset_profile
+from backend.datasets import dataset_profiles, get_dataset_profile
 from tests.data.test_source_manifest import manifest_fixture
 
 
@@ -33,7 +33,7 @@ class DatasetPreparationTests(unittest.TestCase):
     def test_every_profile_contig_matches_independently_verified_assembly_metadata(self) -> None:
         from backend.builder.constants import PRIMARY_CONTIG_LENGTHS
         fixtures = Path(__file__).parent / "fixtures"
-        for dataset_id in ("human-gencode-v45", "human-gencode-v50", "mouse-gencode-m39"):
+        for dataset_id in dataset_profiles():
             profile = get_dataset_profile(dataset_id)
             assembly = "hg38" if profile["species"] == "human" else "mm39"
             official = {}
@@ -47,7 +47,7 @@ class DatasetPreparationTests(unittest.TestCase):
                 self.assertEqual(profile.contigs["chr18"], 80_373_285)
 
     def test_all_profiles_have_verified_nonnull_full_inventory(self) -> None:
-        for dataset_id in ("human-gencode-v45", "human-gencode-v50", "mouse-gencode-m39"):
+        for dataset_id in dataset_profiles():
             profile = get_dataset_profile(dataset_id)
             counts = profile["expected"]
             self.assertEqual(sum(counts["gtf_feature_rows"].values()), counts["gtf_total_rows"])
@@ -58,7 +58,7 @@ class DatasetPreparationTests(unittest.TestCase):
     def test_v3_profile_registry_species_and_raw_identity_mismatches(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for dataset_id in ("human-gencode-v50", "mouse-gencode-m39"):
+            for dataset_id in (identifier for identifier in dataset_profiles() if identifier != "human-gencode-v45"):
                 manifest = modern_manifest(dataset_id)
                 path = root / PREPARATION_MANIFEST
                 path.write_text(json.dumps(manifest))

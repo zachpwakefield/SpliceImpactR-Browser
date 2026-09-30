@@ -149,7 +149,7 @@ The minimap exposes scrollbar semantics, visible-row text, and keyboard navigati
 
 ## Application identity and support diagnostics
 
-Application version `1.2.0` identifies the dataset-aware UI, persistence, protein defaults, search and launcher behavior. Each annotation build hash identifies immutable scientific content. They are displayed independently; changing `CFBundleShortVersionString` or frontend code must not modify a scientific manifest/build hash. Current audit evidence is in `setup_validation.md`; the asset observations below are historical 1.1.x deployment records.
+Application version `1.2.1` identifies the dataset-aware UI, persistence, protein defaults, search and launcher behavior. Each annotation build hash identifies immutable scientific content. They are displayed independently; changing `CFBundleShortVersionString` or frontend code must not modify a scientific manifest/build hash. Current audit evidence is in `setup_validation.md`; the asset observations below are historical 1.1.x deployment records.
 
 The patch release is `1.1.1` build 3. Its packaged production assets are `index-DX_Ybgkz.js` (SHA-256 `8f260b9d517511b2bcf4b5723d893a4cd293bc983a8518bd329e1606213210c5`) and `index-C4hHE25D.css` (SHA-256 `528657043ce74b5a80d6174a4a97dd92fc82c5f34e6b2df10b53ac42242bfbdb`). These runtime identities are deployment evidence, not replacements for the immutable annotation build hash.
 

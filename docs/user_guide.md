@@ -8,7 +8,7 @@ From the project directory:
 ./run_local.sh
 ```
 
-Open the printed `http://127.0.0.1:<port>` URL. Normal startup accepts validated full packages, with human v45 as the default. Use `./run_local.sh --dataset human-gencode-v50` or `--dataset mouse-gencode-m39` after preparation. The smaller human-v45 SP1 acceptance package is available only through `./run_local.sh --dev-fixture`.
+Open the printed `http://127.0.0.1:<port>` URL. Normal startup accepts validated full packages, with human v45 as the default. Use `./run_local.sh --dataset mouse-gencode-m34` for the corresponding mouse release after preparation. Other preparation presets and their validation status are described in [genome datasets](genome_datasets.md). The smaller human-v45 SP1 acceptance package is available only through `./run_local.sh --dev-fixture`.
 
 The **Genome annotation** toolbar selector shows installed validated datasets.
 Switching preserves the current dataset's saved workspace and opens the other
@@ -172,7 +172,7 @@ storage keys and native runtime/log directories retain their legacy identities.
 Reinstall to get the newly named Mac app and replace any old Dock shortcut.
 The installer leaves the older named bundle untouched.
 
-Application version `1.2.0` identifies these interface and launcher capabilities. Each dataset's annotation build hash identifies scientific content. Updating the application does not change the GENCODE/Ensembl/assembly data unless a separately verified annotation build is installed.
+Application version `1.2.1` identifies these interface and launcher capabilities. Each dataset's annotation build hash identifies scientific content. Updating the application does not change the GENCODE/Ensembl/assembly data unless a separately verified annotation build is installed.
 
 The 2026-07-14 search-resolution source patch is `1.1.2` build 4. It makes a unique exact gene symbol navigate to the gene instead of treating same-gene transcript suggestions as ambiguity; genuine duplicate gene symbols still require an explicit choice. It changes no annotation database, schema, or build identity. Native installation and smoke evidence for this patch are recorded only after those steps run; see `docs/release_checklist.md`.
 

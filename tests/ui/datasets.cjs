@@ -1,4 +1,4 @@
-// Optional real-browser contract test against the three synthetic API datasets.
+// Optional real-browser contract test against the synthetic API datasets.
 // Requires Playwright externally; it is not a runtime browser dependency.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -30,18 +30,25 @@ const engine = process.env.BROWSER_ENGINE || "chromium";
       await page.goto(`${origin}/?dataset=${dataset}`, { waitUntil: "networkidle" });
       await page.getByLabel(`${symbol} transcript labels`, { exact: true }).waitFor();
       const selector = page.getByLabel("Genome annotation", { exact: true });
-      assert.equal(await selector.locator("option").count(), 3);
+      assert.equal(await selector.locator("option").count(), 4);
       assert.equal(await selector.inputValue(), dataset);
       assert.equal(new URL(page.url()).searchParams.get("dataset"), dataset);
       return page;
     }
     const human = await open("human-gencode-v45", "SP1");
     const mouse = await open("mouse-gencode-m39", "Sp1");
+    const matchedMouse = await open("mouse-gencode-m34", "Sp1");
     const v50 = await open("human-gencode-v50", "SP1");
     await mouse.getByLabel("ELM unavailable for this dataset", { exact: true }).waitFor();
     assert.ok(await mouse.getByLabel("ELM unavailable for this dataset", { exact: true }).isDisabled());
     assert.ok((await mouse.locator(".build-badge").textContent()).includes("GRCm39"));
-    checks.push("three independent tabs keep their species/release identity and unavailable-source state");
+    assert.ok((await matchedMouse.locator(".build-badge").textContent()).includes("M34"));
+    assert.ok((await matchedMouse.locator(".build-badge").textContent()).includes("111"));
+    for (const [page, residue] of [[mouse, "M"], [matchedMouse, "G"], [mouse, "M"]]) {
+      const response = await page.request.get(`${origin}/api/v1/transcripts/ENSMUST00000327443/sequence?dataset=${new URL(page.url()).searchParams.get("dataset")}`);
+      assert.equal((await response.json()).sequence[0], residue);
+    }
+    checks.push("four independent tabs retain species/release identity; M34 and M39 do not cross-load shared mouse transcript IDs");
     for (const [page, residue] of [[human, "M"], [v50, "A"], [human, "M"]]) {
       const response = await page.request.get(`${origin}/api/v1/transcripts/ENST00000327443/sequence?dataset=${new URL(page.url()).searchParams.get("dataset")}`);
       assert.equal((await response.json()).sequence[0], residue);

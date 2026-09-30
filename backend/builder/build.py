@@ -1742,7 +1742,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Parent directory for atomically published builds",
     )
     parser.add_argument("--scope", choices=("sp1", "full"), default="full")
-    parser.add_argument("--dataset", default="human-gencode-v45", help="Verified dataset profile ID (human-gencode-v45, human-gencode-v50, mouse-gencode-m39)")
+    parser.add_argument("--dataset", default="human-gencode-v45", help="Dataset profile ID (default human-gencode-v45; matched mouse mouse-gencode-m34; see docs/genome_datasets.md for other presets)")
     parser.add_argument(
         "--reference-fasta",
         type=Path,

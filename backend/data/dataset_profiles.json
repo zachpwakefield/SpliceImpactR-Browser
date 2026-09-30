@@ -277,6 +277,96 @@
       },
       "preferred_default_gene": "Sp1",
       "ppi_predictions": false
+    },
+    {
+      "dataset_id": "mouse-gencode-m34",
+      "label": "Mouse · GENCODE M34",
+      "species": "mouse",
+      "scientific_name": "Mus musculus",
+      "gencode_release": "M34",
+      "ensembl_release": 111,
+      "assembly": "GRCm39",
+      "package_dir": "mouse_gencode_m34",
+      "cache_subdir": "mouse_gencode_m34",
+      "biomart": {
+        "host": "https://jan2024.archive.ensembl.org",
+        "dataset": "mmusculus_gene_ensembl",
+        "registry_database": "ensembl_mart_111"
+      },
+      "raw_base_url": "https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34",
+      "raw_inputs": {
+        "gtf": {
+          "file": "gencode.vM34.annotation.gtf.gz",
+          "md5": "127939ff60ba0d89ba2bbedc01c6963a"
+        },
+        "transcripts": {
+          "file": "gencode.vM34.pc_transcripts.fa.gz",
+          "md5": "4dd0c6af089fdddde9f332164c92a0d7"
+        },
+        "translations": {
+          "file": "gencode.vM34.pc_translations.fa.gz",
+          "md5": "61103880ab1cdaf0f60c54a6472fcac3"
+        }
+      },
+      "expected": {
+        "gtf_feature_rows": {
+          "CDS": 520858,
+          "Selenocysteine": 64,
+          "UTR": 185280,
+          "exon": 863151,
+          "gene": 57126,
+          "start_codon": 59428,
+          "stop_codon": 55197,
+          "transcript": 149076
+        },
+        "gtf_total_rows": 1890180,
+        "pc_transcript_fasta_records": 66254,
+        "pc_translation_fasta_records": 66254,
+        "pc_transcript_fasta_records_total": 66254,
+        "pc_translation_fasta_records_total": 66254
+      },
+      "gtf_header_tokens": [
+        "version M34",
+        "Ensembl 111",
+        "mouse genome (GRCm39)"
+      ],
+      "contigs": {
+        "chr1": 195154279,
+        "chr2": 181755017,
+        "chr3": 159745316,
+        "chr4": 156860686,
+        "chr5": 151758149,
+        "chr6": 149588044,
+        "chr7": 144995196,
+        "chr8": 130127694,
+        "chr9": 124359700,
+        "chr10": 130530862,
+        "chr11": 121973369,
+        "chr12": 120092757,
+        "chr13": 120883175,
+        "chr14": 125139656,
+        "chr15": 104073951,
+        "chr16": 98008968,
+        "chr17": 95294699,
+        "chr18": 90720763,
+        "chr19": 61420004,
+        "chrX": 169476592,
+        "chrY": 91455967,
+        "chrM": 16299
+      },
+      "contig_provenance": {
+        "provider": "UCSC assembly chromosome sizes",
+        "url": "https://hgdownload.soe.ucsc.edu/goldenPath/mm39/bigZips/mm39.chrom.sizes",
+        "scope": "reference chromosomes only; lengths are assembly metadata, not GTF extents"
+      },
+      "identifier_prefixes": {
+        "gene": "ENSMUSG",
+        "transcript": "ENSMUST",
+        "protein": "ENSMUSP",
+        "exon": "ENSMUSE"
+      },
+      "preferred_default_gene": "Sp1",
+      "ppi_predictions": false
     }
   ]
 }

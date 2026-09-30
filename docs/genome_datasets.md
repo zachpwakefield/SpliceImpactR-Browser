@@ -5,13 +5,12 @@ applied to an existing database. Selection is independent in each tab. Missing,
 invalid and unknown selections fail explicitly; another release or a human
 fixture is never silently substituted for mouse.
 
-## Reviewed profiles
+## Main setup profiles
 
 | ID | GENCODE / Ensembl | Assembly | Cache | Build directory |
 | --- | --- | --- | --- | --- |
 | `human-gencode-v45` | v45 / 111 | GRCh38.p14 | `data/cache` | `data/builds/gencode_v45` |
-| `human-gencode-v50` | v50 / 116 | GRCh38.p14 | `data/cache/human_gencode_v50` | `data/builds/human_gencode_v50` |
-| `mouse-gencode-m39` | M39 / 116 | GRCm39 | `data/cache/mouse_gencode_m39` | `data/builds/mouse_gencode_m39` |
+| `mouse-gencode-m34` | M34 / 111 | GRCm39 | `data/cache/mouse_gencode_m34` | `data/builds/mouse_gencode_m34` |
 
 Pairings come from the official [human](https://www.gencodegenes.org/human/releases.html)
 and [mouse](https://www.gencodegenes.org/mouse/releases.html) histories.
@@ -22,9 +21,8 @@ registry, species-specific mart and assembly are verified, not inferred from dat
 
 ```bash
 ./scripts/setup_local.sh --dataset human-gencode-v45 --no-start
-./scripts/setup_local.sh --dataset human-gencode-v50 --no-start
-./scripts/setup_local.sh --dataset mouse-gencode-m39 --no-start
-./run_local.sh --dataset human-gencode-v50
+./scripts/setup_local.sh --dataset mouse-gencode-m34 --no-start
+./run_local.sh --dataset mouse-gencode-m34
 ```
 
 Run only the setup commands you need. Each builds its selected profile and leaves
@@ -33,21 +31,21 @@ preparation preset. Restart the service after installing another dataset;
 changing the selector performs no downloads. `--cache DIR` and `--query-cache DIR`
 override preparation locations; use separate caches for different datasets.
 
-SpliceImpactR's public `get_annotation()` takes GENCODE numbering (human `50`,
-mouse `"M39"`). Feature mart queries take the paired **Ensembl** release (`116`
+SpliceImpactR's public `get_annotation()` takes GENCODE numbering (human `45`,
+mouse `"M34"`). Feature mart queries take the paired **Ensembl** release (`111`
 for both). These are not interchangeable numbers.
 
 To use previously downloaded complete inputs, supply all three files:
 
 ```bash
 Rscript --vanilla scripts/prepare_spliceimpactr_cache.R \
-  --dataset human-gencode-v50 --output data/cache/human_gencode_v50 \
-  --base-dir data/spliceimpactr-cache/human_gencode_v50 --skip-exon \
-  --gtf /path/to/gencode.v50.annotation.gtf.gz \
-  --transcript-fa /path/to/gencode.v50.pc_transcripts.fa.gz \
-  --protein-fa /path/to/gencode.v50.pc_translations.fa.gz
+  --dataset mouse-gencode-m34 --output data/cache/mouse_gencode_m34 \
+  --base-dir data/spliceimpactr-cache/mouse_gencode_m34 --skip-exon \
+  --gtf /path/to/gencode.vM34.annotation.gtf.gz \
+  --transcript-fa /path/to/gencode.vM34.pc_transcripts.fa.gz \
+  --protein-fa /path/to/gencode.vM34.pc_translations.fa.gz
 PYTHON=.venv/bin/python ./scripts/build_annotations.sh \
-  data/cache/human_gencode_v50 --dataset human-gencode-v50 --scope full
+  data/cache/mouse_gencode_m34 --dataset mouse-gencode-m34 --scope full
 ```
 
 Verified existing raw files avoid repeating SpliceImpactR's analysis-oriented
@@ -93,3 +91,19 @@ unavailable archives must not fall back to a latest service.
 Source fixtures and live gene checkpoints are not full-install evidence. Full
 preparation, SQLite validation, UI checks and deterministic rebuild receipts are
 separate per-profile gates; see `testing.md` and `setup_validation.md` for evidence.
+
+## Experimental preparation presets
+
+The registry also retains these presets so existing local work is not relabeled
+or invalidated:
+
+| ID | GENCODE / Ensembl | Assembly | Cache | Build directory |
+| --- | --- | --- | --- | --- |
+| `human-gencode-v50` | v50 / 116 | GRCh38.p14 | `data/cache/human_gencode_v50` | `data/builds/human_gencode_v50` |
+| `mouse-gencode-m39` | M39 / 116 | GRCm39 | `data/cache/mouse_gencode_m39` | `data/builds/mouse_gencode_m39` |
+
+Their raw inputs and source contracts have been checked, but full protein-feature
+preparation and build validation remain incomplete because the pinned Ensembl
+116 service was unavailable during the audit. They are not the main README
+installation route. Do not substitute a different release or rename an M39 build
+as M34: the mouse releases share GRCm39 but differ in annotation and feature data.

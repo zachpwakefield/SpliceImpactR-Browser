@@ -373,6 +373,70 @@ Physical Dock-icon/Finder interaction and biological sign-off remain separate
 human checks. GitHub branch heads were read-only checked and remained at the
 prior MIT-license commit; no source changes were committed or pushed here.
 
+## Matched mouse M34 setup and README cleanup — September 30, 2026
+
+The primary setup documentation now uses human **v45** and mouse **M34**, both
+paired with **Ensembl 111** in the official GENCODE release histories. The
+mouse profile is a new immutable dataset, not a renamed M39 build. The exact
+January 2024 archive registry (`ensembl_mart_111`) and mouse mart assembly
+(`GRCm39`) were independently checked. All three official M34 raw MD5s, GTF
+headers, model/sequence counts and primary chromosome lengths were verified.
+
+A cold mouse accession completed through public SpliceImpactR
+`get_annotation(species="mouse", release="M34")`. Its analysis-oriented
+processed objects were discarded as catalog inputs; checksum-verified raw GTF
+and FASTAs recovered through public cache metadata remained authoritative.
+Full preparation retained **57,126 genes and 149,076 transcripts**, including
+all TSL values and separately preserved `NA`/missing support values. Independent
+raw-file and R/Python catalog inventories agree on transcript-ID SHA-256
+`18c0fbabc0592642846a01633c2d4ad3fccc3cdcf52b32924c429393e0c25621`.
+Sp1 contains six models, Tpm1 21 and Fgfr3 17 in this release.
+
+All seven protein-feature sources completed with explicit available status,
+producing **878,392 records**. Both full SQLite builds passed annotation,
+feature-identity/bounds, translation, projection and foreign-key gates. They
+produced the same scientific hash
+`5401eb059f8bf273a5612663542e0a0937270e0b478ba330eaacbd04f51954be`;
+all eight deterministic-build comparisons passed, including identical
+manifest/report bytes and canonical table hashes. Translation maps comprise
+55,304 exact, 10,950 partial and 100 unresolved products. Only exact maps
+project features to the genome; the other models remain in the catalog.
+
+The five new full-M34 acceptance tests passed independently of the builder's
+own validation, including the raw inventory, exact Sp1 versioned identifiers,
+all TSL counts, feature receipts, projection coverage, SQLite integrity and
+canonical content hashes. The live scoped API smoke passed. Chrome and Firefox
+passed real Sp1/Tpm1/Fgfr3 searches, complete isoform counts, All protein tracks,
+actual feature-call comparisons and mouse PPI exclusion, without browser
+errors or external runtime requests. A separate four-dataset synthetic Chrome
+test confirmed that M34/M39 do not cross-load shared mouse stable identifiers.
+
+The final source gate passed **83 data/tooling, 57 backend/API/native and 164
+frontend tests (304 total, no skips)**, plus complete-annotation/dataset and PPI
+exporter offline R contracts, source parsing, TypeScript, production build and
+the publication/privacy audit. The SP1 technical fixture was rebuilt for the
+current toolchain before its repeat-build acceptance check; the existing full
+human v45 scientific package was not replaced.
+
+Application **1.2.1** compiled and signed on Apple Silicon. A temporary-home
+Mac installation verified private copies of both v45 and M34 plus the optional
+human reference/context; M34 was the default. Its no-window launcher self-test
+passed readiness with the exact M34 hash and stopped only its own server.
+The regular installed application and Dock were not replaced by this audit.
+
+The README was reduced from roughly 4,150 to 660 words, keeping installation,
+the v45/M34 pairing, core functionality, screenshots and guide links. System
+prerequisites, input contracts and optional PPI setup remain in linked guides;
+former-name history and experimental-release setup are not front-page material.
+README regressions check local links/anchors, the matched setup commands and
+the concise scope, while preserving the original implementation-plan link.
+
+This M34 result does not close the experimental v50/M39 full-build gates or
+validate PPI-switch predictions. The optional exon audit was skipped; genomic
+projection was independently reconstructed and checked from the raw GTF.
+Biological sign-off, unfamiliar-user tasks, actual Safari/Intel installation
+and physical Dock/Finder interaction remain separate human/platform gates.
+
 ## Remaining review boundaries
 
 - Actual desktop Safari, a working WebKit engine, Intel native installation,
