@@ -28,8 +28,8 @@ SpliceImpactR from installing. CI and the Ubuntu/WSL2 setup instructions now
 explicitly install the compiler/CMake and development-library prerequisites.
 A corrected CI result, not the earlier local installation, was required to
 confirm that Linux installation path. Both corrected review-branch runs
-[7](https://github.com/zachpwakefield/spliceimpactr-browser/actions/runs/36641014609)
-and [8](https://github.com/zachpwakefield/spliceimpactr-browser/actions/runs/36642405540)
+[7](https://github.com/zachpwakefield/SpliceImpactR-Browser/actions/runs/36641014609)
+and [8](https://github.com/zachpwakefield/SpliceImpactR-Browser/actions/runs/36642405540)
 passed: fresh Linux installation of SpliceImpactR 1.0.0, complete-annotation
 integration, frontend, and Python 3.9/3.11/3.14 checks. The Linux R fixture
 does not replace a full Linux scientific download/build. Push checks are limited to `main` and

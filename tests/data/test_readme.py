@@ -51,14 +51,20 @@ class ReadmeTests(unittest.TestCase):
         self.assertLess(self.readme.index(preview), self.readme.index("## Install"))
 
     def test_repository_links_use_the_current_name(self) -> None:
-        repository = "https://github.com/zachpwakefield/spliceimpactr-browser"
+        name = "SpliceImpactR-Browser"
+        repository = f"https://github.com/zachpwakefield/{name}"
         self.assertIn(f"git clone {repository}.git", self.readme)
-        self.assertIn("cd spliceimpactr-browser\n", self.readme)
+        self.assertIn(f"cd {name}\n", self.readme)
         self.assertIn(f"{repository}/archive/refs/heads/main.zip", self.readme)
         old_name = "transcript" + "-browser-shareable"
-        for path in (ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))):
+        guides = {ROOT / filename for filename in PRACTICAL_GUIDES}
+        guides.update((ROOT / "docs").glob("*.md"))
+        for path in sorted(guides):
             with self.subTest(filename=path.relative_to(ROOT)):
-                self.assertNotIn(old_name, path.read_text(encoding="utf-8"))
+                markdown = path.read_text(encoding="utf-8")
+                self.assertNotIn(old_name, markdown)
+                for linked_name in re.findall(r"github\.com[/:]zachpwakefield/([A-Za-z0-9_-]+)", markdown):
+                    self.assertEqual(linked_name, name, "Repository links must use the exact current name")
 
     def test_practical_guide_links_and_anchors_resolve(self) -> None:
         for filename in PRACTICAL_GUIDES:
