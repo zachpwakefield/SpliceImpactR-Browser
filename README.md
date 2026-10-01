@@ -19,8 +19,8 @@ Once setup is complete, you can browse offline.
 You need [Python](https://www.python.org/downloads/) 3.9–3.14,
 [Node.js](https://nodejs.org/en/download) 22.13+ and
 [R](https://cran.r-project.org/) 4.6+. Use macOS, Linux or Windows with WSL2.
-First setup needs internet access and several GB of disk space; the human
-database alone is about 3.3 GB. Linux users: install these
+First setup needs internet access and several GB of disk space; the
+genome downloads are more than 3 GB. Linux users: install these
 [R build prerequisites](docs/data_preparation.md#system-prerequisites) first.
 
 ```bash
