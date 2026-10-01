@@ -44,8 +44,8 @@ The app ZIP is about 1.2 MB. Human v45 annotation, sequence and protein-feature
 downloads total about 226 MB; the finished local database takes 3.3 GB.
 Software dependencies add to the download.
 
-On an M2 Max (64 GB), allow about 75 minutes for first setup once Python, Node
-and R are installed, or about 45 minutes for data preparation and building if
+On an M2 Max (64 GB), allow about an hour for first setup once Python, Node
+and R are installed, or about 40 minutes for data preparation and building if
 the browser dependencies are already installed. These
 [timing estimates](docs/setup_timing.json) combine a fresh dependency installation
 with a completed empty-cache data/build run, using R packages built from source.
