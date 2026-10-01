@@ -117,5 +117,5 @@ the continuous protein axis.
 
 ## License
 
-Browser code: [MIT](LICENSE). SpliceImpactR and annotation resources retain their
-own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
+Browser code: [MIT License](LICENSE). SpliceImpactR and annotation resources
+retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md).
