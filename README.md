@@ -20,7 +20,7 @@ You need [Python](https://www.python.org/downloads/) 3.9–3.14,
 [Node.js](https://nodejs.org/en/download) 22.13+ and
 [R](https://cran.r-project.org/) 4.6+. Use macOS, Linux or Windows with WSL2.
 First setup needs internet access and several GB of disk space; the
-genome downloads are more than 3 GB. Linux users: install these
+finished local database is more than 3 GB. Linux users: install these
 [R build prerequisites](docs/data_preparation.md#system-prerequisites) first.
 
 ```bash
@@ -39,6 +39,15 @@ No Git? [Download the ZIP](https://github.com/zachpwakefield/SpliceImpactR-Brows
 extract it, open a terminal in that folder, and run `./scripts/setup_local.sh`.
 Data is downloaded during setup, not included in the repository. A whole-genome
 FASTA and samtools are not needed.
+
+The app ZIP is about 1.2 MB; raw human v45 annotation and sequence files are
+about 110 MB. Protein-feature queries and software dependencies add to that download.
+
+On an M2 Max (64 GB), fresh dependency installation took about 33 minutes,
+with R packages built from source. With dependencies installed, fetching and
+preparing the raw data took about 10 minutes. These are
+[partial measurements](docs/setup_timing.json): protein-feature retrieval and
+database-build timing are still unmeasured.
 
 ### Human or mouse
 

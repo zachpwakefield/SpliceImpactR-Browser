@@ -23,6 +23,7 @@ These are historical implementation and validation records, not setup steps:
 
 - [Original implementation plan](LOCAL_TRANSCRIPT_BROWSER_IMPLEMENTATION_PLAN.md)
 - [Setup validation](setup_validation.md)
+- [Fresh-setup timing and download measurements](setup_timing.json)
 - [Methodology and code review log](review_log.md)
 - [Critical review approach](critical_review_addendum.md)
 - [Release checklist](release_checklist.md)

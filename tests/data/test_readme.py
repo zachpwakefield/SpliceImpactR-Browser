@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import re
 import unittest
 
@@ -70,6 +71,20 @@ class ReadmeTests(unittest.TestCase):
         for filename in PRACTICAL_GUIDES:
             source = ROOT / filename
             self.assert_local_links_resolve(source, source.read_text(encoding="utf-8"))
+
+    def test_setup_measurements_distinguish_downloads_and_incomplete_timings(self) -> None:
+        receipt = json.loads((ROOT / "docs/setup_timing.json").read_text(encoding="utf-8"))
+        self.assertFalse(receipt["cold_conditions"]["previous_annotation_or_package_caches_supplied"])
+        sizes = receipt["sizes_bytes"]
+        self.assertEqual(sizes["raw_input_total"], sum(sizes["raw_inputs"].values()))
+        self.assertGreater(sizes["app_source_zip"], 0)
+        self.assertNotIn("genome downloads are more than 3 GB", self.readme)
+        if receipt["status"] != "passed":
+            self.assertIsNone(receipt["timings_seconds"]["full_setup_until_ready"])
+            self.assertIsNone(receipt["timings_seconds"]["data_and_app_build_with_dependencies_present"])
+            self.assertIsNone(sizes["total_scientific_data_download"])
+            self.assertIsNone(sizes["completed_installation_disk_usage"])
+            self.assertIn("partial measurements", self.readme)
 
     def test_practical_guides_remain_concise(self) -> None:
         for filename, word_limit in PRACTICAL_GUIDES.items():

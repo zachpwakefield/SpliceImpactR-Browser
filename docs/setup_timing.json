@@ -1,0 +1,66 @@
+{
+  "schema": "spliceimpactr-browser-setup-benchmark/v1",
+  "date": "2026-10-01",
+  "dataset_id": "human-gencode-v45",
+  "source_commit": "90c01c801913cd148e00139b5d453f114a9345cb",
+  "status": "blocked_upstream",
+  "failure": "Pinned Ensembl 111 archive returned HTTP 500 before protein-feature retrieval; independent registry and website checks also returned HTTP 500.",
+  "environment": {
+    "cpu": "Apple M2 Max",
+    "cpu_cores": 12,
+    "ram_bytes": 68719476736,
+    "macos": "26.0.1",
+    "python": "3.9.6",
+    "node": "24.19.0",
+    "r": "4.6.1",
+    "spliceimpactr": "1.0.0",
+    "bioconductor": "3.23",
+    "r_package_installation": "source",
+    "r_packages_installed_during_test": 146
+  },
+  "cold_conditions": {
+    "previous_annotation_or_package_caches_supplied": false,
+    "preinstalled_r_packages": "R base packages only",
+    "fresh": ["GitHub checkout", "home directory", "Python venv", "Node dependency store", "R user library", "raw annotation cache", "BioMart and ELM query caches"],
+    "prerequisites_already_installed": ["Python", "Node", "R", "pnpm executable", "compiler and build tools"]
+  },
+  "timings_seconds": {
+    "github_clone": 0.784,
+    "python_dependency_installation": 15.999,
+    "frontend_dependencies_and_production_build": 14.816,
+    "frontend_production_build_with_dependencies_present": 5.530,
+    "r_dependency_installation": 1928.273,
+    "all_dependencies_ready_from_test_start": 1961.075,
+    "raw_gencode_download": 392.023,
+    "raw_accession_and_spliceimpactr_processing": 536.524,
+    "complete_unfiltered_model_read": 21.534,
+    "data_preparation_until_feature_query": 567.316,
+    "elapsed_until_upstream_failure": 2528.897,
+    "full_setup_until_ready": null,
+    "data_and_app_build_with_dependencies_present": null
+  },
+  "timing_method": "One cold setup run, segmented by timestamped setup and preparation log markers. Data-only stages began after dependencies were freshly installed, with empty annotation and query caches. Software prerequisite installation time is excluded.",
+  "sizes_bytes": {
+    "app_source_zip": 1206537,
+    "r_source_package_archives": 174380828,
+    "raw_inputs": {
+      "gencode.v45.annotation.gtf.gz": 49770653,
+      "gencode.v45.pc_transcripts.fa.gz": 47890586,
+      "gencode.v45.pc_translations.fa.gz": 12037739
+    },
+    "raw_input_total": 109698978,
+    "data_process_received_until_failure_approximate": 110064503,
+    "total_scientific_data_download": null,
+    "completed_installation_disk_usage": null,
+    "maximum_resident_set_until_failure": 6350995456
+  },
+  "download_measurement_method": "Raw input and source archive file sizes, plus installer-only nettop per-process delta receive counters sampled at one second. The first counter sample includes bytes on connections already open. Network counts include protocol overhead and are approximate.",
+  "validation": {
+    "raw_file_checksums_match_selected_profile": true,
+    "complete_raw_model_import_passed": true,
+    "protein_features_retrieved": false,
+    "full_database_built": false,
+    "ready_to_run_smoke_test_passed": false
+  },
+  "scope": "Default human v45 only; mouse, optional PPI context, and native Dock launcher installation excluded. This failed run does not establish a full-install time or full-download size."
+}
