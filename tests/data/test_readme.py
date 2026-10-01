@@ -50,6 +50,16 @@ class ReadmeTests(unittest.TestCase):
         self.assertEqual(self.readme.count(preview), 1)
         self.assertLess(self.readme.index(preview), self.readme.index("## Install"))
 
+    def test_repository_links_use_the_current_name(self) -> None:
+        repository = "https://github.com/zachpwakefield/spliceimpactr-browser"
+        self.assertIn(f"git clone {repository}.git", self.readme)
+        self.assertIn("cd spliceimpactr-browser\n", self.readme)
+        self.assertIn(f"{repository}/archive/refs/heads/main.zip", self.readme)
+        old_name = "transcript" + "-browser-shareable"
+        for path in (ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))):
+            with self.subTest(filename=path.relative_to(ROOT)):
+                self.assertNotIn(old_name, path.read_text(encoding="utf-8"))
+
     def test_practical_guide_links_and_anchors_resolve(self) -> None:
         for filename in PRACTICAL_GUIDES:
             source = ROOT / filename

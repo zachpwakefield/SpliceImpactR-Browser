@@ -24,8 +24,8 @@ genome downloads are more than 3 GB. Linux users: install these
 [R build prerequisites](docs/data_preparation.md#system-prerequisites) first.
 
 ```bash
-git clone https://github.com/zachpwakefield/transcript-browser-shareable.git
-cd transcript-browser-shareable
+git clone https://github.com/zachpwakefield/spliceimpactr-browser.git
+cd spliceimpactr-browser
 ./scripts/setup_local.sh
 ```
 
@@ -35,7 +35,7 @@ and starts the server. Open the local URL printed in the terminal.
 Keep that terminal open; Ctrl+C stops the server. Rerun setup to resume an
 interrupted preparation.
 
-No Git? [Download the ZIP](https://github.com/zachpwakefield/transcript-browser-shareable/archive/refs/heads/main.zip),
+No Git? [Download the ZIP](https://github.com/zachpwakefield/spliceimpactr-browser/archive/refs/heads/main.zip),
 extract it, open a terminal in that folder, and run `./scripts/setup_local.sh`.
 Data is downloaded during setup, not included in the repository. A whole-genome
 FASTA and samtools are not needed.
