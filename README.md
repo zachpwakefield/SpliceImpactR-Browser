@@ -1,14 +1,18 @@
 # SpliceImpactR Browser
 
-Explore transcript isoforms, protein domains and sequences locally—without
-moving between Ensembl pages. Powered by
-[SpliceImpactR](https://bioconductor.org/packages/release/bioc/html/SpliceImpactR.html).
-Prepare your data once, then browse offline.
+A local browser for transcript isoforms, protein domains and sequences.
+[SpliceImpactR](https://bioconductor.org/packages/release/bioc/html/SpliceImpactR.html)
+prepares the annotations; the browser lets you explore them together.
+Once setup is complete, you can browse offline.
 
 - See exon, CDS and UTR structure alongside protein features on genomic and
   amino-acid scales.
 - Compare isoforms and highlight genomic events across transcripts and proteins.
 - Inspect sequences, export PDFs and tables, and keep favorites and notes locally.
+
+![SP1 protein features on genomic and protein coordinates](docs/assets/sp1-expanded-protein-features.jpg)
+
+*SP1 transcript structure with exon-aware protein features.*
 
 ## Install
 
@@ -76,7 +80,8 @@ For mouse, use `./run_local.sh --dataset mouse-gencode-m34`.
 
 InterPro, Pfam, CDD, TMHMM, SignalP, MobiDB-lite and ELM can be toggled separately.
 Optional [human PPI context](docs/data_preparation.md#optional-human-ppi-context)
-adds recorded partners and isoform feature observations to **Compare**.
+adds recorded interaction partners and feature evidence for each isoform to
+**Compare**.
 
 ### Event highlights
 
@@ -90,11 +95,6 @@ For other controls and shortcuts, see the [short user guide](docs/user_guide.md)
 For an app icon in your Mac Dock, follow the [Mac launcher instructions](desktop_app/README.md).
 
 ## Screenshots
-
-**Exon-aware protein features:** inspect the same features on the genome and
-the continuous protein axis.
-
-![SP1 protein features on genomic and protein coordinates](docs/assets/sp1-expanded-protein-features.jpg)
 
 **Isoform comparison:** see the actual feature calls and ranges for two transcripts.
 

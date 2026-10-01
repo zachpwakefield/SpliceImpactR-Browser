@@ -34,7 +34,7 @@ Detailed transcript rows show one selected gene. The overview shows neighboring 
 
 Click a transcript row to inspect its structure, identifiers, support, and flags. Open the triangle beside its name to reveal protein features.
 
-In **View → Default protein tracks**, choose **All translated transcripts**, **Top translated transcript**, or **None**. Top means first in annotation order. Selecting a row alone does not expand it.
+In **View → Default protein tracks**, choose **All translated transcripts**, **Top translated transcript**, or **None**. Top means the first translated transcript in the gene's default order. Selecting a row alone does not expand it.
 
 Expanded rows pair genomic feature projections with an independent N-to-C protein axis. Hover a feature to connect its protein and exon positions; click for details.
 

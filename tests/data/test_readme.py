@@ -45,6 +45,11 @@ class ReadmeTests(unittest.TestCase):
     def test_readme_local_links_and_selected_anchors_resolve(self) -> None:
         self.assert_local_links_resolve(ROOT / "README.md", self.readme)
 
+    def test_browser_preview_appears_once_before_install(self) -> None:
+        preview = "docs/assets/sp1-expanded-protein-features.jpg"
+        self.assertEqual(self.readme.count(preview), 1)
+        self.assertLess(self.readme.index(preview), self.readme.index("## Install"))
+
     def test_practical_guide_links_and_anchors_resolve(self) -> None:
         for filename in PRACTICAL_GUIDES:
             source = ROOT / filename
