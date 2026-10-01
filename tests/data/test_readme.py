@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 import re
 import unittest
 
@@ -72,33 +71,14 @@ class ReadmeTests(unittest.TestCase):
             source = ROOT / filename
             self.assert_local_links_resolve(source, source.read_text(encoding="utf-8"))
 
-    def test_setup_measurements_distinguish_downloads_measurements_and_estimates(self) -> None:
-        receipt = json.loads((ROOT / "docs/setup_timing.json").read_text(encoding="utf-8"))
-        self.assertFalse(receipt["cold_conditions"]["previous_annotation_or_package_caches_supplied"])
-        sizes = receipt["sizes_bytes"]
-        self.assertEqual(sizes["raw_input_total"], sum(sizes["raw_inputs"].values()))
-        self.assertGreater(sizes["app_source_zip"], 0)
+    def test_setup_estimates_are_brief_and_distinguish_downloads_from_disk_usage(self) -> None:
+        self.assertIn("about an hour", self.readme)
+        self.assertIn("about 40 minutes", self.readme)
+        self.assertIn("Times vary", self.readme)
+        self.assertIn("downloads total about 226 MB", self.readme)
+        self.assertIn("database takes 3.3 GB", self.readme)
+        self.assertNotIn("setup_timing.json", self.readme)
         self.assertNotIn("genome downloads are more than 3 GB", self.readme)
-        if receipt["status"] == "passed":
-            for check in ("raw_file_checksums_match_selected_profile", "complete_raw_model_import_passed",
-                          "protein_features_retrieved", "full_database_built", "ready_to_run_smoke_test_passed"):
-                self.assertTrue(receipt["validation"][check], check)
-            timings = receipt["timings_seconds"]
-            data_time = timings["data_and_app_build_with_dependencies_present"]
-            self.assertGreater(data_time, 0)
-            self.assertIsNone(timings["full_setup_until_ready"],
-                              "Separate dependency and data runs do not establish one measured cold-install time")
-            estimate = receipt["estimates_seconds"]["full_setup_with_language_prerequisites_present"]
-            self.assertAlmostEqual(estimate, timings["all_dependencies_ready_from_test_start"] + data_time, places=2)
-            self.assertGreater(sizes["total_scientific_data_download"], sizes["raw_input_total"])
-            self.assertGreater(sizes["finished_annotation_build"], 0)
-            self.assertIn("estimates", self.readme)
-        else:
-            self.assertIsNone(receipt["timings_seconds"]["full_setup_until_ready"])
-            self.assertIsNone(receipt["timings_seconds"]["data_and_app_build_with_dependencies_present"])
-            self.assertIsNone(sizes["total_scientific_data_download"])
-            self.assertIsNone(sizes["completed_installation_disk_usage"])
-            self.assertIn("partial measurements", self.readme)
 
     def test_practical_guides_remain_concise(self) -> None:
         for filename, word_limit in PRACTICAL_GUIDES.items():
