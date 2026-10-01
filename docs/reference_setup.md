@@ -1,18 +1,24 @@
-# Optional whole-genome reference setup
+# Optional whole-genome reference
 
-The transcript, transcript-sequence, and protein-feature browser does not need a whole-genome reference. Add this optional input only when you want the API to serve verified byte ranges from an Ensembl GRCh38.p14 FASTA.
+Skip this for normal transcript, sequence, and protein-feature browsing. It
+adds human GRCh38 reference byte-range serving to the local API; mouse reference
+serving is not currently supported.
 
-Use the Ensembl release-115 file paired with GENCODE v45/Ensembl 111, then create the checksum-compatible FAI index (for example, with `samtools faidx`):
+Download [Ensembl's release-115 GRCh38 FASTA](https://ftp.ensembl.org/pub/release-115/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.toplevel.fa.gz)
+as `Homo_sapiens.GRCh38.dna.toplevel.fa.gz` and prepare it from the repository root:
 
 ```bash
 mkdir -p data/reference
-# download the official release-115 Homo_sapiens.GRCh38.dna.toplevel.fa.gz
 gunzip -c Homo_sapiens.GRCh38.dna.toplevel.fa.gz > data/reference/Homo_sapiens.GRCh38.dna.toplevel.fa
 samtools faidx data/reference/Homo_sapiens.GRCh38.dna.toplevel.fa
-shasum -a 256 data/reference/Homo_sapiens.GRCh38.dna.toplevel.fa
-shasum -a 256 data/reference/Homo_sapiens.GRCh38.dna.toplevel.fa.fai
+PYTHON=.venv/bin/python ./scripts/build_annotations.sh data/cache \
+  --reference-fasta data/reference/Homo_sapiens.GRCh38.dna.toplevel.fa \
+  --scope full
 ```
 
-The expected SHA-256 values are constants in `backend/builder/constants.py`. When `--reference-fasta` is supplied, the builder checks the FASTA, FAI, primary-contig lengths, chromosome aliases, and GENCODE/Ensembl release lineage. Do not edit a generated manifest or substitute a different assembly to bypass a failed check.
-
-The FASTA is a local scientific input and is ignored by Git. Keep it in `data/reference/` or pass an equivalent path explicitly to `scripts/build_annotations.sh --reference-fasta`. If it is omitted, run `scripts/build_annotations.sh data/cache --scope full` and the browser will start in transcript-package-only mode with reference-range endpoints unavailable.
+`samtools` is needed only for this optional indexing step. This is the
+checksum-pinned GRCh38.p14 reference adapter; it does not change the browser's
+v45/Ensembl-111 annotation or feature release. The builder checks the FASTA and
+index against `backend/builder/constants.py`. If a check fails, use the expected
+file or rebuild without `--reference-fasta`. Keep these large inputs locally in
+`data/reference/`, not in Git.

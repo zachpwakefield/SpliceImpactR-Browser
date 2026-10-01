@@ -2,260 +2,96 @@
 
 ## Start the full local browser
 
-From the project directory:
+To reopen human v45 after [setup](../README.md#install):
 
 ```bash
-./run_local.sh
+./run_local.sh --open
 ```
 
-Open the printed `http://127.0.0.1:<port>` URL. Normal startup accepts validated full packages, with human v45 as the default. Use `./run_local.sh --dataset mouse-gencode-m34` for the corresponding mouse release after preparation. Other preparation presets and their validation status are described in [genome datasets](genome_datasets.md). The smaller human-v45 SP1 acceptance package is available only through `./run_local.sh --dev-fixture`.
+To reopen mouse M34, including a mouse-only installation:
 
-The **Genome annotation** toolbar selector shows installed validated datasets.
-Switching preserves the current dataset's saved workspace and opens the other
-dataset's starting/saved view. Complete pending notes/tag edits before switching.
-Separate tabs can show different releases or species. Search results and exported
-files always belong to that tab's selected dataset; see [genome datasets](genome_datasets.md).
+```bash
+./run_local.sh --dataset mouse-gencode-m34 --open
+```
 
-The launcher does not open a browser unless `--open` is supplied, does not bind beyond loopback, and does not fetch annotation, reference, fonts, scripts, search results, or telemetry from the internet.
+On macOS, double-click **SpliceImpactR Browser.app** or its Dock icon.
+
+**Genome annotation** switches between prepared datasets. Without `--dataset`, the Terminal launcher defaults to human v45.
 
 ## Find and navigate annotations
 
-The shareable source distribution does not include the generated SP1 fixture or full SQLite package. Build a local package first; the command bar accepts:
+Search for a gene symbol (`SP1`), transcript name (`SP1-201`), Ensembl gene/transcript/protein/exon ID, or genomic interval (`chr12:53380176-53416446`). Choose a result or press Enter.
 
-- gene symbols and transcript names, such as `SP1` and `SP1-201`;
-- versioned or unversioned human ENSG/ENST/ENSP/ENSE or mouse ENSMUSG/ENSMUST/ENSMUSP/ENSMUSE identifiers; and
-- coordinates such as `chr12:53,380,176-53,416,446`.
+Detailed transcript rows show one selected gene. The overview shows neighboring genes; click one to switch. Coordinate search moves the viewport while keeping your selected gene.
 
-Exact matches rank first. Submitting a gene symbol with exactly one matching gene record navigates directly to that gene, even when the bounded result palette also contains its transcripts or other genes that share the prefix. When distinct gene records carry the same exact symbol, choose one by stable ID, chromosome, biotype, and locus; the application does not guess. A direct transcript, protein, or exon result resolves its owning transcript/gene before navigation.
-
-After choosing a result, the command field closes and relinquishes focus. Click it again to begin another search immediately; delayed result-palette cleanup cannot close a newly focused search.
-
-The **Recents / Favorites** control beside search records a gene or transcript only after navigation succeeds. Recents are deduplicated by stable base identifier and retain the latest 25 entries. Favorites are explicit, preserve their user order, and are limited to 100. Both are local to this browser profile, origin, and immutable annotation build. A stale entry is reported without changing the current view, and an ambiguous symbol is never guessed.
-
-After a gene loads, **Find current transcript** searches every current-gene transcript in the current custom visual order by transcript name, base or versioned ENST, available protein ID, and biotype. Its result includes the position and compact identity metadata. **Previous** and **Next** move through filter-matched transcripts without wrapping. Selecting a result requests one reveal, updates the inspector, then releases the scroll viewport; lazy detail or feature loading cannot pull the row back into view.
-
-Global transcript shortcuts are available when focus is not in a text control, menu, or modal:
-
-- `/` focuses global search.
-- `J` and `K` select the next or previous filter-matched transcript.
-- `P` toggles the selected transcript’s pin.
-- `C` opens/focuses comparison mode.
-- `Shift+C` assigns the current selection as comparison context and selects a second row when available.
-
-Page Up, Page Down, Home, and End navigate the transcript viewport. A shortcut prevents browser default behavior only when the application actually handles it.
-
-Use **Fit gene** or **Fit transcript** for an explicit jump. Drag the genomic Canvas to pan, drag the ruler to select an interval, double-click to zoom, or use the zoom buttons. A vertical wheel continues to scroll the page. A horizontal trackpad gesture pans; Ctrl/Cmd-wheel zooms around the pointer. When the Canvas has keyboard focus, Left/Right pans and Plus/Minus zooms.
-
-Broad loci use precomputed density and packed genes. Below the detail thresholds, individual transcript models appear. Selected and pinned entities remain available when automatic level-of-detail would otherwise suppress transcript rows.
-
-## Highlight genomic events
-
-Search for a gene, then open **Event highlights** and paste one interval or a
-list such as `chrX:1-3,5-9,22-50`. Coordinates are **1-based inclusive**; `1-1`
-marks one base. The chromosome carries forward across comma-separated ranges.
-Use a new line for another chromosome. A single complete interval per line can
-use thousands separators, for example `chrX:77,910,739-77,910,741`; omit those
-separators in comma-separated lists. Bare ranges use the selected gene's
-chromosome. All positions must fit the active genome assembly.
-
-**Add highlights** preserves the selected gene and viewport. Colored, dashed
-bands mark the genomic intervals across transcript rows; exon intersections
-are outlined. Expand protein tracks to see the corresponding marks on each
-independent amino-acid axis. The panel lists spliced transcript base ranges and
-protein residues for the selected and comparison transcripts. **Fit highlights**
-fits events on the selected gene's chromosome; click an individual coordinate
-chip to navigate to it without changing gene context. Remove one event or use
-**Clear highlights**. Up to 100 intervals are supported, each at most 25 Mb;
-overlapping events remain separate, while identical duplicates are ignored.
-
-These marks are user context, not source annotations or splice/variant-effect
-predictions. Only exon-overlapping bases receive spliced transcript positions.
-Only coding bases with a complete, exact validated translation map receive
-protein positions. Intronic, UTR, noncoding, loading and unverified-map states
-remain explicit. A single coding base marks its touched residue; **partial codon
-overlap** warns when the interval covers only part of a codon. Terminal stop
-triplets are not protein residues. Protein marks do not imply that a domain or
-interaction was gained or lost.
-
-Events survive gene navigation, pan/zoom, Back/Forward, saved last views and
-portable sessions within the same dataset/build. Switching species or releases
-does not carry them into the new annotation. They are not written to the
-scientific database or included in scientific PDF reports. Shared view URLs
-and session files include these user-supplied coordinates.
+- **Fit gene** / **Fit transcript** returns to the complete gene or selected isoform.
+- Drag the canvas to pan; use **+ / −**, double-click, or Ctrl/Cmd-wheel to zoom.
+- Drag across the ruler to zoom to an interval.
+- Scroll vertically through transcripts; the minimap provides a quick jump.
+- **Find current transcript**, its dropdown, and **Previous / Next** navigate the current gene’s isoforms. Use **Show more** if offered for a large gene.
 
 ## Inspect transcripts and proteins
 
-The **View → Default protein tracks** setting offers **All translated transcripts**, **Top translated transcript** (the initial default), and **None**. Choosing a setting applies it to the current gene and future fresh gene searches/choices. Top means the first translated transcript in annotation order, not a biological ranking. An explicit URL, imported session, Back/Forward state, or restored last view remains authoritative and keeps its requested content mode and expansion state.
+Click a transcript row to inspect its structure, identifiers, support, and flags. Open the triangle beside its name to reveal protein features.
 
-Selecting a transcript updates the inspector but does not itself expand its tracks. Use the triangle beside its name, or choose All. All includes every translated row matching the current transcript filters, even when it has no protein calls; it does not infer annotations for noncoding products. Feature data loads only for the visible window and explicit selection/comparison/pinned context.
+In **View → Default protein tracks**, choose **All translated transcripts**, **Top translated transcript**, or **None**. Top means first in annotation order. Selecting a row alone does not expand it.
 
-Transcript disclosure and pin controls are native buttons in every transcript-content mode. Opening a translated transcript switches to **Protein features**, loads that transcript’s feature rows locally, and renders two deliberately separate coordinate systems:
+Expanded rows pair genomic feature projections with an independent N-to-C protein axis. Hover a feature to connect its protein and exon positions; click for details.
 
-- exon-confined genomic projections on the shared genomic scale; and
-- a continuous N-to-C amino-acid inset with its own scale.
+Use source buttons and **Prediction class** to filter features, **Transcripts** to filter isoforms, and **View** for row density. Pin useful transcripts or use **↕ Reorder** to place rows together.
 
-Manual disclosures are additive rather than accordion-like and capped at 25 simultaneous rows. At the bound, collapse a row or use All instead of silently replacing an existing row. All uses a compact view flag, not a 25-row prefix, and supports up to 500 individually collapsed exceptions. The flag, exceptions and manual expansion set survive URL, portable-session and validated last-view restoration. The default preference is stored separately for this dataset/build.
+## Highlight genomic events
 
-Expanded rows reserve their geometry from the active feature-source selection before asynchronous records arrive. Loading, success, an empty valid result, or a retry therefore fills the same reserved row without moving later transcripts or changing the user’s scroll position.
+1. Search for a gene and open **Event highlights**.
+2. Paste an interval or a list, then choose **Add highlights**:
 
-A feature crossing a splice junction is drawn as multiple CDS pieces, never as an intron-spanning rectangle. Hover cross-highlights the continuous feature and its genomic pieces; click pins it in the inspector. If several features share the pointer location, choose one from the overlap menu. The inspector’s table remains a keyboard-accessible alternative.
+   ```text
+   chr12:53380176-53380178,53380190-53380205,53380220-53380250
+   ```
+3. Expand protein tracks to see projections across isoforms.
 
-Source filters preserve the seven independent local sources. InterPro, Pfam, and CDD remain source annotations; the interface does not invent domain/family/site classes absent from the local files. `biomaRt` is shown as a retrieval method, not evidence.
+Coordinates are **1-based inclusive**. The chromosome carries forward through comma-separated ranges; bare ranges use the gene’s chromosome. Start a new line for another chromosome. Thousands separators require one complete interval per line, such as `chr12:53,380,176-53,380,178`.
 
-The **Prediction class** menu is intentionally narrower than source filtering. It derives four typed classes only from their single-purpose inputs: TM helix from TMHMM, signal peptide from SignalP, disorder from MobiDB-lite, and linear motif from ELM. It never reclassifies InterPro, Pfam, or CDD rows.
+Colored bands mark genomic intervals and their exon intersections. The panel lists spliced-transcript positions and touched protein residues for the selected and comparison transcripts. Protein positions require an exact coding map; intronic and UTR bases have none. These marks show overlap, not a predicted biological effect.
 
-The **Transcripts** menu filters biotypes and can require any selected annotation flag: MANE Select, MANE Plus Clinical, Ensembl canonical, APPRIS principal, GENCODE Basic, or CCDS. With no flag selected, all flag states qualify. The selected transcript and pinned transcripts remain visible even when an ordinary filter would exclude them, and the menu reports that retained context.
+**Add highlights** keeps your current view. **Fit highlights** fits events on the gene’s chromosome; a coordinate chip jumps to one event. Remove individual events with **×**, or choose **Clear highlights**.
 
-To compare two isoforms more closely, select one transcript as the anchor and open the **↕ Reorder** control on the other row. Move it one visible row at a time, or place it directly above or below the selected transcript. This changes only the visual order shared by the label rail and Canvas; transcript identity, genomic coordinates, features, filtering, and the immutable annotation package do not change. The **Order** menu reports whether a custom order is active and restores the original order in one action. Keyboard users can Tab to every reorder control, and focus follows a row after it moves.
+## Compare isoforms
 
-For an explicit two-column comparison, select the anchor and then set the second transcript with the current-gene navigator’s **Comparison transcript** selector, a row’s **Compare** control, or a pinned row’s **Compare** control. The selected and comparison transcripts must be different members of the current gene. The **Compare** inspector distinguishes genuine zero from missing, not applicable, and not-yet-loaded values while showing IDs, biotype, support and annotation level, structural lengths, exon count, CCDS/APPRIS, scientific flags, per-source feature counts, and shared/unique tags. Actions can swap selected/comparison, clear or pin comparison, and place comparison immediately above or below selection. Merely opening comparison never changes transcript order or scroll position.
+Select one transcript, choose a second with **Comparison transcript**, then open **Compare**.
 
-**Actual protein-feature differences** lists source/accession/method identities
-with every recorded AA interval on each isoform. It initially shows differences;
-turn off **Show differences only** for shared calls, or search a feature name or
-accession. Repeated calls are preserved, with explicit feature/call pagination.
-**Observed only on selected/comparison**, **Call count differs**, and **AA
-coordinates differ** describe annotations—not proven biological domain
-gain/loss or aligned residue correspondence. Each protein uses 1-based
-inclusive AA coordinates. Partial mappings are marked AA-only; original
-out-of-protein calls remain visible with a warning. Unknown accessions are not
-matched. Loading/error/unavailable states are never treated as absent calls.
+**Actual protein-feature differences** shows calls unique to either isoform, changed call counts, and different amino-acid intervals. Turn off **Show differences only** to include shared calls. Search by feature name/accession, or click an amino-acid range for details.
 
-Use the Compare section shortcuts to jump directly to protein features, PPI
-context, or transcript facts without scrolling through the other sections.
-
-Click an AA range to inspect that exact feature. Inspecting a comparison-side
-call swaps the selected/comparison roles and preserves the pair. Canvas
-source/class filters do not hide comparison evidence: all available sources
-are included.
-
-**Feature calls CSV/TSV** exports all compared identities/calls, including shared
-calls and non-visible pages. The first data row has `record_type=provenance`;
-feature rows have `record_type=feature_identity`. JSON call arrays retain record
-IDs, names, exact ranges, projection state, and out-of-protein warnings. Dataset,
-build, source availability, and protein identity/length fields are included.
-Empty comparisons still carry provenance without an invented feature.
-
-For a human dataset with optional context prepared, **PPI context and focal
-feature evidence** lists BioGRID-backed gene records and DDI/DMI endpoint
-identifiers. The default filter is domain/motif linked; **All gene-level
-records** includes entries without a supplied feature mechanism. Each focal
-identifier is **Observed**, **Not observed** in successfully loaded available
-annotations, or **Not assessed** (unsupported namespace, unavailable source,
-missing protein, loading/error, or invalid AA bounds). Click an observed token
-to inspect a corresponding call. Partner identifiers are shown separately and
-are not assessed against the focal isoforms.
-
-This context is not an isoform interaction prediction: endpoint lists are
-aggregated, original pairings and partner isoforms/expression are unknown, and
-no switch, affinity, confidence or probability is inferred. The resource's
-date/release is explicitly unknown; its package/data hash and annotation-build
-binding appear in provenance. Mouse shows a human-only notice. Missing optional
-context does not disable ordinary transcript/protein browsing.
-
-Custom order is gene-scoped. Hidden filtered rows retain their relative place, selected/pinned context remains visible, and the selected transcript’s immediate neighbors remain in the bounded display even when a large gene exceeds the initial 120-row logical limit. Choosing a different gene starts from that gene’s original order.
-
-The command bar’s **Track content** selector separates biological content from row density: **Automatic by zoom**, **Gene overview**, **Transcript spans**, **Exon structures**, and **Protein features**. Choosing **Protein features** opens the selected translated transcript without closing any other expanded row. The **View** menu independently switches between compact and comfortable row density. It also enables or disables Canvas arrow-key pan and Plus/Minus zoom; pointer gestures remain available when keyboard shortcuts are disabled. **Restore last view** controls automatic startup restoration, and **Clear saved workspace** removes build-scoped recents, favorites, notes/tags, PDF preset, and last view from this browser profile after explicit activation.
-
-The Sequence inspector lazily loads the full coding-transcript record, GTF-derived CDS, or protein record. It never synthesizes missing sequence. Copy controls use versioned identifiers by default.
-
-Large collections are viewport-windowed. The transcript label rail and Canvas share the same complete layout while mounting/drawing only visible rows plus overscan. The feature table and sequence viewer likewise mount a scrolling window while preserving their total row/line counts, keyboard-accessible positions, and full-sequence copy behavior. Scrolling, not a reduced biological result, reveals the remaining records.
-
-When transcript rows overflow, a slim vertical minimap summarizes that same shared layout. Its viewport indicator tracks the visible row interval, and separate non-color-only markers identify selected, comparison, and pinned rows. Click or drag the minimap for an explicit scroll; focus it and use Arrow Up/Down, Page Up/Down, Home, or End for the keyboard equivalent. It is hidden when the transcript workspace does not overflow and never mounts a second full transcript list.
-
-## Add private local notes and tags
-
-The Gene and Transcript inspector tabs provide fields labeled **Local user note** and **Local user tags**. These are personal annotations, not GENCODE, Ensembl, HGNC, or protein-feature evidence. They are stored only in the browser’s build-scoped workspace and never mutate the read-only annotation database.
-
-Notes autosave after a short debounce and report saved or validation status. One note may contain at most 5,000 characters; an entity may have at most 10 tags, each no longer than 40 characters. Delete removes that entity’s local annotation explicitly. Notes and tags may appear in comparison CSV/TSV exports and portable sessions, but are excluded from scientific PDF reports.
-
-Importing a portable session validates its schema and annotation build before presenting an annotation merge. The merge is an explicit action: missing annotations are added, a strictly newer imported annotation may replace an older local value, and a newer or same-time conflicting local annotation is preserved and reported. Import never silently overwrites newer local work.
-
-## Understand empty and off-screen states
-
-The interface distinguishes:
-
-- no annotated gene in the requested interval;
-- a noncoding transcript with no translated product;
-- a translated product with no features in the active local sources;
-- a transcript/sequence kind absent from the cache;
-- a partial or unresolved translation that can show a continuous amino-acid annotation but no genomic projection; and
-- a pinned transcript or selected gene outside the current genomic view.
-
-The last case preserves context and offers **Return to transcript/gene**. Package, checksum, schema, or build-lineage failures stop normal startup with remediation rather than producing a half-functional browser. An optional whole-genome reference may be absent; in that case only reference-range capability is unavailable.
+For prepared human datasets, **PPI context and focal feature evidence** shows recorded gene partners and whether their linked domain/motif identifiers occur in each isoform. This is gene-level context, not an isoform interaction prediction.
 
 ## Preserve and export a view
 
-The URL stores the build hash, locus, selected gene/transcript/comparison/feature, genomic event highlights, custom transcript order, expanded and pinned rows, source filters, typed prediction classes, excluded transcript biotypes, required transcript flags, row density, Canvas-keyboard preference, display mode, and inspector tab. Search/coordinate/fit/highlight actions create history entries; live pan, zoom, filters, ordering, view settings, and disclosure changes update the current entry. Browser Back/Forward restores the complete research state.
+**Workspace** provides recents and favorites. Add notes/tags in the **Gene** or **Transcript** inspector. Saved work stays in your browser, separately for each annotation build.
 
-The schema-1 local workspace uses the key `transcript-browser:workspace:v1`, is capped at 512 KiB, and is accepted only when its build hash matches the verified manifest. It persists a ready, validated last view after a 400 ms debounce; scrolling alone is not stored continuously. On startup, automatic restoration runs only when **Restore last view** is enabled and the page has no explicit view parameters. Any explicit deep link wins. Corrupt, unsupported, oversized, or build-mismatched workspace data is safely ignored rather than partially trusted.
+- **Copy view** copies a URL for the same installation.
+- **Export session / Import session** transfers views, highlights, and notes between installations with the same annotation build.
+- **Sequence** displays and copies transcript, CDS, or protein sequence.
+- **Export JSON / TSV** downloads gene, transcript, or feature data; **Locus JSON / TSV** exports the viewed region.
+- Comparison exports provide transcript tables or **Feature calls CSV / TSV**.
+- **Save PDF** reports chosen transcripts, structures, features, and sequence excerpts. **Quick PDF** reuses report settings.
 
-**Copy view** is reusable on the same installation and immutable build. For another installation, export a bounded session JSON containing view state and optionally local annotations. Import refuses an oversized file, malformed state, unsupported schema, or mismatched build hash. Imported annotation changes require the explicit merge described above.
+## Useful shortcuts
 
-### Export a transcript comparison
+Shortcuts apply outside text fields; canvas controls require canvas focus.
 
-Comparison export writes selected plus comparison transcripts and can optionally add pinned rows. The export is restricted to one gene and no more than 20 transcripts, preserves the current custom visual order, and refuses stale or cross-gene transcript IDs rather than silently dropping them.
+| Control | Action |
+| --- | --- |
+| `/` | Focus search |
+| `J` / `K` | Next / previous transcript |
+| `P` | Pin / unpin selected transcript |
+| `C` | Open comparison |
+| `←` / `→`, `+` / `−` | Pan / zoom canvas |
+| Page Up / Down, Home / End | Navigate transcript rows |
 
-CSV and TSV use stable columns for immutable build/gene/transcript identities, structural and support metrics, scientific flags, per-source feature counts, selected/comparison/pinned roles, and clearly labeled local note/tag fields. Empty, unavailable, and not-applicable values remain distinguishable. Correct delimiter quoting is applied, and user-authored fields beginning like spreadsheet formulas are neutralized. The deterministic filename contains a safe gene symbol, annotation-build identity, and export format.
+## Quick fixes
 
-## Start without Terminal on macOS
+**Only one protein track?** Choose **View → Default protein tracks → All translated transcripts**.
 
-Double-click **SpliceImpactR Browser.app** on the Desktop. Its small native status window starts the verified server only on `127.0.0.1`, waits for the immutable manifest, and opens the workspace in the default browser. Use **Open Browser** to reopen the page. Use **Stop & Quit**, close the launcher window, or choose Quit to stop the server process owned by the launcher.
+**Lost the gene while panning?** Choose **Fit gene**.
 
-The name changed from Transcript Browser; saved-session formats, local browser
-storage keys and native runtime/log directories retain their legacy identities.
-Reinstall to get the newly named Mac app and replace any old Dock shortcut.
-The installer leaves the older named bundle untouched.
-
-Application version `1.2.1` identifies these interface and launcher capabilities. Each dataset's annotation build hash identifies scientific content. Updating the application does not change the GENCODE/Ensembl/assembly data unless a separately verified annotation build is installed.
-
-The 2026-07-14 search-resolution source patch is `1.1.2` build 4. It makes a unique exact gene symbol navigate to the gene instead of treating same-gene transcript suggestions as ambiguity; genuine duplicate gene symbols still require an explicit choice. It changes no annotation database, schema, or build identity. Native installation and smoke evidence for this patch are recorded only after those steps run; see `docs/release_checklist.md`.
-
-The preceding 2026-07-14 installed release was `1.1.1` build 3 and retained the same exact immutable annotation manifest. Its completed gate, native smoke, and production asset identities remain historical release evidence in `docs/release_checklist.md`.
-
-The one-time installer prepares a versioned private runtime under `~/Library/Application Support/Transcript Browser`; ordinary launches do not depend on a particular checkout name or open Terminal. If the app is rebuilt or its private runtime is removed, run `./desktop_app/install_macos_app.sh` once from the source checkout. Pass a reviewed dataset ID to choose the default; all installed validated datasets are packaged. Inspect `~/Library/Logs/Transcript Browser/server.log` for startup failures. The normal Terminal command remains available for development and release verification.
-
-### Save a PDF report
-
-Choose **Save PDF** in the status bar to create a structured report from the verified local package. The resulting PDF uses selectable text and vector transcript models; it is not a screenshot of the Canvas.
-
-The dialog initially selects the current transcript and offers shortcuts for the selected transcript, selected plus pinned transcripts, or all filter-matched transcripts. You can also choose rows individually. The chooser uses the current filtered transcript list and preserves its custom visual order in the report, regardless of the order in which checkboxes were selected. One report may contain at most 20 transcripts.
-
-Choose any combination of these sections:
-
-- **Transcript summary:** versioned IDs, coordinates, lengths, biotype, flags, tags, and support facts.
-- **Exon and CDS structure:** a shared-scale vector model and exon/CDS table.
-- **Protein annotations:** rows from the currently active local feature sources, including amino-acid coordinates and projection status.
-- **Sequence excerpt:** an exact interval from the full transcript, CDS, or protein sequence. Start and end are 1-based inclusive, and the same requested range is applied to each chosen transcript with an available sequence. An unavailable sequence is labeled rather than synthesized or silently omitted.
-
-For exon/CDS structure, **Selected-transcript union** uses the minimum start through maximum end of all chosen transcripts on one shared scale. **Current locus** uses the visible genomic interval; only overlapping exon rows are listed, while each listed row retains its complete exon coordinate. All displayed genomic loci and sequence excerpts use exact 1-based inclusive ranges.
-
-The local browser sends the bounded specification to `POST /api/v1/report/pdf`, verifies the immutable build and transcript ownership, and downloads the generated file. The hard limits are 20 transcripts, 2,000 feature rows, 20,000 total sequence characters, 10,000 characters in any one excerpt, 100 pages, and 25 MiB. Nothing is silently truncated: narrow the transcript/source/sequence selection or save additional batches when a limit is reached.
-
-After a successful report, **Quick PDF** stores only the validated scope and section configuration for this annotation build. It can request selected only, selected plus comparison, or selected plus pinned in the current visual order. Before reuse, the browser validates the build, gene ownership, transcript availability, section choices, feature sources, structure scope, and any sequence range. A stale transcript, mismatched build, or invalid range opens the normal dialog with safe values; Quick PDF never silently omits a requested transcript or section.
-
-PDF reports are designed for reading and sharing, while bounded JSON/TSV exports remain the machine-oriented formats for downstream analysis. PDFs are not tagged and do not claim PDF/UA accessibility conformance. They use portable standard PDF fonts; unsupported glyphs may be replaced. The custom Canvas release still does not promise screenshot/SVG export, so use operating-system capture when an image of the live workspace is specifically required.
-
-## Copy support diagnostics
-
-Open **About & diagnostics** from the status bar to see application version, immutable annotation build, GENCODE/Ensembl/assembly/schema declarations, runtime capabilities, PDF availability, current gene/transcript, viewport/DPR, loopback service origin, and observed external-resource count. **Copy diagnostics** produces bounded plain text suitable for a colleague or support report.
-
-The copied receipt deliberately excludes notes, tags, search and recent history, sequences, absolute home-directory paths, usernames, and non-loopback URL details. Application version and annotation build remain separate lines so an interface upgrade cannot be mistaken for changed scientific content.
-
-## Coordinate conventions
-
-Displayed loci and copied prose are 1-based inclusive. SQLite, the JSON API, cache keys, and Canvas transforms use integer 0-based half-open `start0`/`end0` fields. Amino-acid annotations retain 1-based inclusive start/end positions. See `docs/coordinate_contract.md` before interpreting or extending projection data.
-
-## Troubleshooting
-
-- **Normal startup refuses the package:** rebuild with `./scripts/build_annotations.sh data/cache --scope full`, then rerun. Add `--full-database-verify` to the launcher for the slow database integrity gate; use `--full-reference-verify` only when the optional reference is present.
-- **An optional reference receipt/checksum fails:** follow `docs/reference_setup.md`, or omit the reference and rebuild the transcript/protein-only package; do not edit the active manifest by hand.
-- **A search is missing an alias:** v1 indexes local GTF names and stable IDs. It does not claim a complete HGNC synonym catalog or typo-tolerant search.
-- **The previous view did not restore:** an explicit URL takes priority, restoration may be disabled, or the saved workspace may belong to another annotation build/browser profile. Open the View settings before assuming data loss.
-- **Only one transcript shows protein tracks:** selecting another row does not expand it. Use its triangle or **View → Default protein tracks → All translated transcripts**. Empty source coverage is distinct from a collapsed row.
-- **A 26th manual protein row will not open:** manual expansion is bounded to 25 rows. Collapse a row or use All, whose feature requests remain window-bounded.
-- **Recents, favorites, or notes differ in another browser:** these are intentionally browser-profile-local and are not synchronized. Use a portable session and its explicit annotation merge when transfer is intended.
-- **Quick PDF opens the full dialog:** its saved preset was absent, stale, build-mismatched, or unsafe for the current transcripts/range. Review the prefilled bounded options rather than expecting silent truncation.
-- **The interval is dense or truncated:** zoom in. API and render bounds deliberately prevent full-chromosome transcript payloads.
-- **A large gene shows only part of its transcript list at once:** use **Show more** to raise the bounded logical display limit, then use the current-gene navigator, minimap, or transcript workspace scroll. The live DOM/Canvas window remains small even when all summaries are available.
-- **Keyboard/gesture reminder:** open **Keyboard & gestures** in the status bar.
+**Startup failed?** Use the command above matching your prepared dataset, then check the printed error and [setup instructions](../README.md#install). **About & diagnostics → Copy diagnostics** supplies a useful support summary.

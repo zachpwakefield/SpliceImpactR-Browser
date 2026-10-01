@@ -1,134 +1,77 @@
-# SpliceImpactR Browser — optional macOS / Dock launcher
+# macOS / Dock launcher
 
-`SpliceImpactR Browser.app` starts the verified local browser without a Terminal
-window. It opens the default browser only after both the annotation build and
-packaged frontend match. **Open Browser** reopens it; **Stop & Quit** stops only
-the server this launcher started. An already-running matching server may be
-reused and is never terminated by the launcher.
+The launcher opens SpliceImpactR Browser without a Terminal window. Human v45
+is the default; any other installed dataset, including mouse M34, is available
+in **Genome annotation**.
 
-The checkout can have any name and location. There is no required Desktop
-project folder or workstation-specific annotation hash.
+## Requirements
+
+Complete the [main installation](../README.md#install) first. The launcher needs
+macOS 12+ and Apple's Xcode Command Line Tools. If needed, run
+`xcode-select --install` and finish that installation before continuing.
 
 ## Install locally
 
-First follow the repository [setup instructions](../README.md#requirements)
-and prepare the full annotation package:
+From the repository root:
 
 ```bash
 ./scripts/setup_local.sh --no-start
-```
-
-The native launcher additionally needs Apple's Xcode Command Line Tools. If
-they are absent, install them with `xcode-select --install`, complete that
-installation, then run from the repository root:
-
-```bash
-./desktop_app/install_macos_app.sh
+./desktop_app/install_macos_app.sh human-gencode-v45
 open "$HOME/Applications/SpliceImpactR Browser.app"
 ```
 
-Drag the installed application from your home **Applications** folder to the
-Dock, or use **Options → Keep in Dock** after opening it. The installer also
-creates a Desktop link; it does not edit your Dock settings.
+If setup is already complete, skip its command. Drag the app from your home
+**Applications** folder into the Dock, or choose **Options → Keep in Dock**
+while it is running. The installer also adds a Desktop link; it does not change
+Dock settings.
 
-The default port is `8765`. If that port belongs to a different service/build,
-the launcher chooses a free IPv4 loopback port and shows its URL. It never kills
-an unrelated process. Browser notes and saved workspaces are origin-specific,
-so a different port has separate local browser storage.
+Use **Open Browser** to reopen the browser and **Stop & Quit** to close the
+launcher and its server. A matching server that was already running is reused
+and left alone. The normal port is `8765`; if occupied, the launcher uses a free
+local port. Saved browser workspaces are separate for each port.
 
-## What is installed
+## Add mouse
 
-- Signed bundle: `~/Applications/SpliceImpactR Browser.app`.
-- Desktop link: `~/Desktop/SpliceImpactR Browser.app`.
-- Versioned code/data: `~/Library/Application Support/Transcript Browser/Runtime`.
-- Server log: `~/Library/Logs/Transcript Browser/server.log` (cleared on the next launch if over 5 MB).
+Quit the launcher, prepare M34, then reinstall with human still selected as
+the default:
 
-The application and its Desktop/Dock label are now **SpliceImpactR Browser**.
-The private runtime/log directories and bundle identifier intentionally keep
-their legacy names so existing caches and launcher identity remain compatible.
-The installer does not delete an older `Transcript Browser.app`; quit that
-older launcher before installing, and replace its Dock entry with the newly
-named app. Browser storage and exported session formats are unchanged.
+```bash
+./scripts/setup_local.sh --dataset mouse-gencode-m34 --no-start
+./desktop_app/install_macos_app.sh human-gencode-v45
+```
 
-Backend code, locked Python packages, production frontend assets, and portable
-metadata are packaged into a ZIP and installed privately. The immutable SQLite
-database and any optional reference artifacts are cloned separately. On APFS,
-copy-on-write clones initially share storage blocks; on a filesystem that does
-not support cloning, ordinary copies are used and require additional space.
-All cloned bytes are SHA-256 checked before publication. Optional reference
-links and inode/time receipts point to the final private paths, never staging.
-The original annotation package is not modified.
-
-All installed validated dataset packages are included, along with the shared
-profile metadata. The toolbar can select among them without R or network access.
-To choose a different native default after preparing it, use
-`./desktop_app/install_macos_app.sh mouse-gencode-m34`. For a bundle-only build,
-the second argument selects the default:
-`./desktop_app/build_macos_app.sh "desktop_app/dist/SpliceImpactR Browser.app" mouse-gencode-m34`.
-The installer must be rerun to add a newly prepared dataset to a private runtime;
-it does not download scientific inputs itself.
-
-The Python interpreter itself is **not** embedded. Keep the Python installation
-used to build the app available: its location and version are recorded in the
-private runtime manifest. Moving/removing that Python installation requires
-rebuilding/reinstalling the launcher. R, Node, and the source checkout are not
-looked up at browser launch; the app uses its installed code/data and the
-recorded Python interpreter.
-
-This is a locally built, ad-hoc-signed application, not a notarized distributable
-binary. **Do not upload the generated `.app`, `Runtime.zip`, runtime manifests,
-or private caches to GitHub or send them as releases.** They contain local
-interpreter/source paths and installed third-party binaries. Share the public
-source and let each person build their own installation instead.
+The installer includes all locally built, validated datasets. Reinstall after
+adding a dataset or optional PPI context. To make mouse the startup default
+instead, pass `mouse-gencode-m34` to the installer.
 
 ## Update or diagnose
 
-Quit the launcher before updating source/data or reinstalling. After pulling
-source changes, rebuild the frontend and any changed scientific inputs, then
-rerun the installer. A new runtime identity gets a new cache directory; existing
-verified caches are checked and reused, not silently overwritten. Unrelated
-Desktop items or app bundles with the same name are refused, not deleted.
-
-For a bundle-only build:
+Quit the launcher before updating. For a source update that does not change
+annotation inputs:
 
 ```bash
-./desktop_app/build_macos_app.sh
+git pull
+.venv/bin/python -m pip install --requirement requirements.lock
+cd frontend
+npx --yes pnpm@11.7.0 install --frozen-lockfile
+npx --yes pnpm@11.7.0 run build
+cd ..
+./desktop_app/install_macos_app.sh human-gencode-v45
 ```
 
-Its default output is the ignored `desktop_app/dist/SpliceImpactR Browser.app`.
-Installation is still required to prepare the private data. To check an
-installed launcher without opening a browser or showing a window:
+Open the installed app again. If the release changes data preparation, rerun
+the relevant setup command before reinstalling.
+
+For a startup check, run this in a normal Mac terminal:
 
 ```bash
 "$HOME/Applications/SpliceImpactR Browser.app/Contents/MacOS/SpliceImpactRBrowserLauncher" --self-test
 ```
 
-Success prints a JSON receipt and exits zero. Any server started by the test is
-stopped; an existing matching server is left alone. This verifies packaging,
-build/frontend identity, loopback readiness, and owned-process shutdown. It
-does not substitute for visual/browser interaction review.
+Success prints a JSON receipt and exits without opening a browser. Logs are at
+`~/Library/Logs/Transcript Browser/server.log`. The app keeps its packaged code
+and data under `~/Library/Application Support/Transcript Browser/Runtime`, but
+still uses the Python installation it was built with; keep that Python available.
 
-The native self-test still needs access to a logged-in macOS GUI session.
-A restricted or headless command runner may abort in macOS application
-registration before launcher startup. Use a normal terminal in the Mac GUI
-session; do not interpret such an environment failure as a data-build result.
-The generated app and private runtime include the project's MIT license and
-third-party notices, without changing dependency or annotation-data terms.
-
-For a sandboxed installation replay, use a new temporary home rather than
-modifying a real installed app:
-
-```bash
-TEST_HOME="$(mktemp -d "${TMPDIR:-/tmp}/transcript-browser-macos-test.XXXXXX")"
-HOME="$TEST_HOME" ./desktop_app/install_macos_app.sh
-HOME="$TEST_HOME" "$TEST_HOME/Applications/SpliceImpactR Browser.app/Contents/MacOS/SpliceImpactRBrowserLauncher" \
-  --self-test --state-root "$TEST_HOME/Library/Application Support/Transcript Browser"
-```
-
-Keep that temporary directory until reviewing the receipt/logs, then remove
-only that directory. The launcher targets macOS 12+ and the build script selects
-the host's `arm64` or `x86_64` architecture. Full isolated packaging/startup was
-tested on Apple Silicon macOS 26.0.1; Intel installation and actual Dock/Finder
-interaction remain separate human checks. CI compiles/signs the native source
-on a [GitHub macOS 15 runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners),
-but does not download the full scientific catalog for that job.
+Share the GitHub source, not the generated `.app`, runtime ZIP/manifests, or
+private caches. Each user should build their own local launcher.
